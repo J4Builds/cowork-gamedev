@@ -2,7 +2,7 @@
 
 ## Status
 
-prototype — macro pass
+prototype — micro pass
 
 ## How to run
 
@@ -16,35 +16,52 @@ Open `index.html` in any modern browser. Two ways:
 
 No build step. No server required.
 
-(If you ever hit a CORS-style error from `file://` on a future prototype that loads assets, run `python -m http.server 8000` from the project folder and open `http://localhost:8000`. Not needed for this one.)
-
 ## Controls
 
 - **W / S** or **↑ / ↓** — move paddle
-- **Space** — start match / play again
+- **Space** — start, pause, resume, play again
+- **← / →** — change difficulty (in title / pause / game-over screens)
 
 ## What works
 
-- Title → playing → game over → restart state machine
-- Player paddle (clamped to court)
-- AI paddle that tracks the ball with a capped speed (beatable)
-- Ball physics: serve from center after a half-second pause, top/bottom wall bounce, paddle bounce with angle-by-hit-position, speed-up per hit (capped)
+- Title → playing → paused → game-over → restart state machine
+- Player paddle, AI paddle (predictive with three difficulty presets)
+- Ball physics: serve from center after a half-second pause, top/bottom
+  wall bounce, paddle bounce with angle-by-hit-position, speed-up per
+  hit (capped at 720 px/sec)
 - Score tracking, first-to-7 win condition
-- Random serve direction at match start, served toward the loser after a point
+- Random serve direction at match start, served toward the loser after
+  a point
+- Difficulty selectable on title / pause / game-over; selection
+  persisted to localStorage
+
+## Difficulty knobs (per preset)
+
+| Preset | aiSpeed | reaction | aimError | predictionFraction |
+|--------|---------|----------|----------|--------------------|
+| Easy   | 180     | 0.25 s   | ±50 px   | 0.40               |
+| Normal | 220     | 0.20 s   | ±30 px   | 0.70               |
+| Hard   | 280     | 0.10 s   | ±15 px   | 0.95               |
+
+`aiPredictionFraction` blends the bounce-aware predicted intercept with
+the ball's current y. Lower fraction = AI aims closer to where the ball
+IS, missing where it WILL BE — that's the main lever that keeps sharp
+shots scoreable.
 
 ## Known issues / things to evaluate
 
-- AI: was a naive tracker — easy to beat with sharp angled shots (player won 7-1 second playtest). Replaced with trajectory-prediction AI: it projects ball y at its x-line (with wall bounces), retargets every 0.15s, includes ±25 px aim wobble. AI_SPEED still 260. Re-evaluate next playtest.
-- Ball top speed (720 px/sec) chosen to avoid tunneling through the 12 px paddle at 60fps. If you see the ball clip through, that's the cause — fix is swept-collision or wider paddle.
-- No sound or visual feedback on paddle hit / score (deliberate — micro pass).
-- Serve delay is fixed at 0.5s; might want to tune.
-- Only one input scheme. No remap.
+- Difficulty curve is set by feel, not measured. Re-tune any of the four
+  knobs per preset based on playtest.
+- Ball top speed (720 px/sec) chosen to avoid tunneling through the 12
+  px paddle at 60fps. If the ball clips through, fix is swept-collision.
+- No sound or visual feedback on paddle hit / score (deliberate — next
+  micro pass).
+- Serve delay is fixed at 0.5s.
 
 ## Next session
 
-Replay with the predictive AI. Then continue micro pass:
+Playtest each difficulty. Then continue micro pass:
 
-1. Re-tune AI: speed (260), reaction time (0.15s), aim error (±25 px) — pick the lever that needs adjusting based on what feels off.
-2. Tune paddle speed, ball start/max/increment if needed.
-3. Add hit feedback (screen shake, color flash, paddle thump).
-4. Decide whether sound is in scope for this prototype.
+1. Adjust knobs per preset based on what felt off.
+2. Add hit feedback (screen shake, color flash, paddle thump).
+3. Decide whether sound is in scope for this prototype.
