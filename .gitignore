@@ -1,0 +1,64 @@
+# =====================================================
+# Game Dev studio .gitignore — covers web (Node/Vite/Phaser) and Godot 4.
+# =====================================================
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ---------- Editors / IDEs ----------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.history/
+
+# ---------- Node / Vite / Phaser ----------
+node_modules/
+dist/
+build/
+.cache/
+.parcel-cache/
+.vite/
+.next/
+.nuxt/
+.svelte-kit/
+.eslintcache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tsbuildinfo
+
+# ---------- Env / secrets ----------
+.env
+.env.*
+!.env.example
+
+# ---------- Godot 4 ----------
+# Imported asset cache — regenerated on open.
+.godot/
+# Legacy import dir (Godot 3, in case any project drifts back).
+.import/
+# Build/export artifacts.
+export.cfg
+export_presets.cfg
+*.translation
+# Mono / C# (only relevant if a project ever uses C#).
+.mono/
+mono_crash.*.json
+# Godot editor settings that shouldn't be in repo.
+*.import.local
+
+# ---------- Game-specific ----------
+# Local saves, screenshots, logs.
+saves/
+screenshots/
+*.log
+
+# ---------- Secrets ----------
+# GitHub PAT used

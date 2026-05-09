@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Prototype</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- The canvas is where everything draws. Width/height in CSS pixels.
+       For pixel-perfect retro looks you'd use a smaller logical resolution
+       and scale up — but a 1:1 canvas is the simplest place to start. -->
+  <canvas id="game" width="800" height="600"></canvas>
+
+  <!-- defer = run after HTML parsed. No DOMContentLoaded boilerplate needed. -->
+  <script src="game.js" defer></script>
+</body>
+</html>
