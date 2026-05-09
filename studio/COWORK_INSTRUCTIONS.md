@@ -114,10 +114,11 @@ Reference `NAMING.md` for the full list. Key points:
 
 ## Session start protocol
 
-1. Confirm which project we're working on, or whether this is a new prototype.
-2. Ask the goal for this session — be specific.
-3. If existing project, read `DESIGN.md` and `README.md` before doing anything else.
-4. Restate the plan before writing code.
+1. Read `HANDOFF.md` at repo root first — last session summary, active projects, open decisions, current tooling notes. Fastest context restore.
+2. Confirm which project we're working on, or whether this is a new prototype.
+3. Ask the goal for this session — be specific.
+4. If existing project, read its `DESIGN.md` and `README.md`.
+5. Restate the plan before writing code.
 
 ## Session end protocol
 
@@ -197,6 +198,7 @@ I don't proactively ask "should this go in Notion." I notice and write at sessio
 ## Folder layout
 
 ```
+HANDOFF.md                  <- session-to-session context bridge; read first
 studio/                     <- meta: instructions, principles, templates, tools
   COWORK_INSTRUCTIONS.md    <- this file
   DESIGN_PRINCIPLES.md      <- evolving design philosophy
