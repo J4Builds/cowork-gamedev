@@ -124,10 +124,10 @@ Reference `NAMING.md` for the full list. Key points:
 
 ---
 
-## Auto-commit workflow (via GitHub API)
+## Auto-commit workflow (GitHub via mirror)
 
-I can write files into the `Game Dev` folder but the Cowork mount blocks the unlink/rename operations git relies on, so I cannot run `git` from inside the sandbox. Instead, I push commits directly to GitHub via the REST API over HTTPS — no filesystem dependency.
+I can write files into the `Game Dev` folder but the Cowork mount blocks the unlink/rename operations git relies on, so git can't run directly inside that folder. Instead, `studio/cowork-push.py` keeps a private mirror of the working tree under `/tmp/cowork-mirror` (a regular Linux filesystem where git works fine), rsyncs my latest edits into it, and runs `git push` to GitHub over HTTPS.
 
 **Repo:** https://github.com/J4Builds/cowork-gamedev
 
-**Auth:** A fine-grained PAT with Contents: Read+Write, stored at `studio/.github-token` (gitignored). Rotate when it expires (default 90 days) by
+**Auth:** A fine-
