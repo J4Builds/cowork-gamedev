@@ -18,8 +18,10 @@ const PADDLE_W = 12;
 const PADDLE_H = 90;
 const PADDLE_PAD = 24;          // distance from canvas edge to paddle face
 const PLAYER_SPEED = 420;       // px/sec
-const AI_SPEED = 260;           // px/sec — capped lower than player so AI is beatable. Was 320; lowered after first playtest felt too hard.
-const AI_DEADBAND = 8;          // px of slop around ball.y before AI moves (prevents jitter)
+const AI_SPEED = 260;           // px/sec — capped lower than player so AI is beatable.
+const AI_DEADBAND = 8;          // px of slop around target before AI moves (prevents jitter)
+const AI_REACTION_TIME = 0.15;  // sec between AI re-targets — feels like thinking time
+const AI_AIM_ERROR = 25;        // px ± random offset added to target each retarget
 const BALL_SIZE = 12;           // square ball, side length
 const BALL_SPEED_START = 420;   // px/sec
 const BALL_SPEED_INC = 30;      // added per paddle hit
@@ -57,6 +59,14 @@ const ai     = { y: H / 2 - PADDLE_H / 2, score: 0 };
 const ball = { x: W / 2, y: H / 2, vx: 0, vy: 0, speed: BALL_SPEED_START };
 let serveDelay = 0;
 let winner = null; // "player" | "ai"
+
+// AI brain state. The AI doesn't follow the ball directly anymore — it
+// projects where the ball will arrive at its x-line (with wall bounces)
+// and moves toward that target. Every AI_REACTION_TIME seconds it picks a
+// new target, which gives sharp/fast shots a chance to slip through
+// because the AI commits to a slightly stale aim point.
+let aiTargetY = H / 2;
+let aiReactTimer = 0;
 
 function serveBall(direction) {
   // direction: -1 = toward player (left), +1 = toward AI (right)
@@ -96,12 +106,27 @@ function update(dt) {
   player.y = clamp(player.y, 0, H - PADDLE_H);
 
   // --- AI paddle ---
-  // Naive tracker: move toward ball.y at fixed speed, with a deadband so
-  // the paddle doesn't jitter when it's already aligned.
-  // Naive on purpose — tuning AI difficulty is a micro-pass concern.
+  // Predictive AI. Every AI_REACTION_TIME seconds, recompute where to go:
+  //   - Ball moving toward AI: predict the y where it will reach AI's x
+  //     (accounting for wall bounces), plus a small aim wobble.
+  //   - Ball moving away: drift back toward center.
+  // The reaction delay means the AI commits to a target between updates,
+  // so a sharp fast shot can land somewhere the AI didn't have time to
+  // reach. That's the difficulty curve.
+  aiReactTimer -= dt;
+  if (aiReactTimer <= 0) {
+    const aiLeft = W - PADDLE_PAD - PADDLE_W;
+    if (ball.vx > 0) {
+      const predicted = predictBallY(aiLeft);
+      aiTargetY = predicted + (Math.random() - 0.5) * AI_AIM_ERROR * 2;
+    } else {
+      aiTargetY = H / 2;
+    }
+    aiReactTimer = AI_REACTION_TIME;
+  }
   const aiCenter = ai.y + PADDLE_H / 2;
-  if (ball.y < aiCenter - AI_DEADBAND) ai.y -= AI_SPEED * dt;
-  else if (ball.y > aiCenter + AI_DEADBAND) ai.y += AI_SPEED * dt;
+  if (aiCenter < aiTargetY - AI_DEADBAND) ai.y += AI_SPEED * dt;
+  else if (aiCenter > aiTargetY + AI_DEADBAND) ai.y -= AI_SPEED * dt;
   ai.y = clamp(ai.y, 0, H - PADDLE_H);
 
   // --- Ball ---
@@ -235,6 +260,28 @@ function drawText(text, x, y, size, color = "#fff", family = "system-ui, sans-se
 
 function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
+}
+
+// Project the ball's y-coordinate when its x reaches `targetX`, accounting
+// for any number of bounces off the top/bottom walls along the way.
+//
+// The trick: in an "unfolded" world where the ball never bounces, it'd
+// travel in a straight line. We compute that straight-line landing y, then
+// fold it back into the [r, H-r] range using a triangle wave. The result
+// is exactly where a ball bouncing physically off the walls would arrive.
+function predictBallY(targetX) {
+  if (ball.vx === 0) return ball.y;
+  const t = (targetX - ball.x) / (ball.vx * ball.speed);
+  if (t < 0) return H / 2; // ball moving away from targetX
+  const yProj = ball.y + ball.vy * ball.speed * t;
+
+  const r = BALL_SIZE / 2;
+  const usableH = H - BALL_SIZE; // ball's center can range r..H-r
+  const period = 2 * usableH;
+  let y = yProj - r;
+  y = ((y % period) + period) % period; // positive remainder
+  if (y > usableH) y = period - y;       // fold back into 0..usableH
+  return y + r;
 }
 
 // ---------- Loop ----------

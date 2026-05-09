@@ -34,7 +34,7 @@ No build step. No server required.
 
 ## Known issues / things to evaluate
 
-- AI difficulty: lowered AI_SPEED from 320 → 260 after first playtest (felt too hard). Re-evaluate next playtest.
+- AI: was a naive tracker — easy to beat with sharp angled shots (player won 7-1 second playtest). Replaced with trajectory-prediction AI: it projects ball y at its x-line (with wall bounces), retargets every 0.15s, includes ±25 px aim wobble. AI_SPEED still 260. Re-evaluate next playtest.
 - Ball top speed (720 px/sec) chosen to avoid tunneling through the 12 px paddle at 60fps. If you see the ball clip through, that's the cause — fix is swept-collision or wider paddle.
 - No sound or visual feedback on paddle hit / score (deliberate — micro pass).
 - Serve delay is fixed at 0.5s; might want to tune.
@@ -42,9 +42,9 @@ No build step. No server required.
 
 ## Next session
 
-Replay with the new AI speed. Then continue micro pass:
+Replay with the predictive AI. Then continue micro pass:
 
-1. Re-tune AI speed if 260 still feels off (try 240 or add small targeting noise).
+1. Re-tune AI: speed (260), reaction time (0.15s), aim error (±25 px) — pick the lever that needs adjusting based on what feels off.
 2. Tune paddle speed, ball start/max/increment if needed.
 3. Add hit feedback (screen shake, color flash, paddle thump).
 4. Decide whether sound is in scope for this prototype.
