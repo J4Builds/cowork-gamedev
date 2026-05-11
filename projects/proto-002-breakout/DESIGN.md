@@ -33,4 +33,7 @@ The *plink* of breaking a brick, and the chain of plinks when the ball gets abov
 
 ## Current state
 
-**Macro pass complete (2026-05-11).** End-to-end playable with placeholder rectangles. Fun test validated on first playtest — the tunneling moment (ball escaping into the side channel, slipping above the wall, chain-clearing rows from above) emerged naturally without coaching. No juice yet — that's the next session.
+**Shipped 2026-05-11.** Macro pass and juice pass both landed in one session.
+
+- Macro pass: faithful 1976 mechanics. Fun test validated on first playtest — the tunneling moment emerged naturally without coaching.
+- Juice pass: ported Pong's discipline (audio voices, hit-stop on paddle hits, paddle flash, axis-aware ba

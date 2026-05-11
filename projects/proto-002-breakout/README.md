@@ -2,7 +2,7 @@
 
 ## Status
 
-prototype
+shipped
 
 ## How to run
 
@@ -26,20 +26,18 @@ Open `index.html` in any modern browser. Or play live at:
 - Three-stage speed ramp: bumps at hit 4, hit 12, and the first time the ball reaches a red row (whichever trigger fires first promotes the level — latched, never goes backward).
 - 3 lives. Brick state persists across deaths (that's the difficulty curve).
 - Title / playing / game over / win states with SPACE as the universal advance.
-- **Playtest verdict (2026-05-11):** "Felt much better than the [reference] one I just played. The paddle was smooth, the colors were better, and the speed kept it engaging. The most satisfying part is when you get the ball to go past the empty space on the sides, and start bouncing from the ceiling to the blocks from above, eliminating whole rows at a time." The tunneling-strategy fun moment emerges naturally from the mechanics.
+- **Macro-pass playtest (2026-05-11):** "Felt much better than the [reference] one I just played. The paddle was smooth, the colors were better, and the speed kept it engaging. The most satisfying part is when you get the ball to go past the empty space on the sides, and start bouncing from the ceiling to the blocks from above, eliminating whole rows at a time." Tunneling-strategy fun moment emerged naturally from the mechanics.
 
-## Known issues
+### Juice layers (shipped 2026-05-11)
 
-None reported. Corner collisions resolve to the larger-overlap axis by tie-break (acceptable for the macro pass).
+- **Audio.** Chain-index pentatonic brick hits (sine + triangle, layered), Pong-ported paddle voice, wall bounce, ball-lost downward sweep, speed-ramp upward tick, layered game-over descending sweep, C-E-G win arpeggio. AudioContext lazy-inits on first keypress; zero asset files.
+- **Impact.** 50ms hit-stop on paddle hit; no per-brick freeze so chain-clears stay fast.
+- **Visual.** Paddle flash, axis-aware ball squash on impact axis, 4-frame ball trail, 3-particle brick-color puff on break.
+- **HUD.** Subtle score-digit pulse on hit (1.25× peak), lives indicator flashes white on ball lost.
+- **Drama.** 5px / 200ms screen shake on ball lost, 400-500ms overlay delay on terminal phases so the audio cue lands first.
 
-## Next session
+All dials in the JUICE KNOBS block. Final tuning: top speed dialed from 580 → 500 after juice playtest showed the level-3 ramp felt too leapy now that the audio honestly reads the game's intensity.
 
-Juice pass — port the discipline from Pong (impact stack, audio, restrained dials). Specific focus areas:
+### Audio design lesson learned this session
 
-- **Brick-hit audio.** Row-based pitch (each row plays a distinct note — the Atari original did this and it's load-bearing for feedback), but soft waveforms (sine/triangle, not raw square) so it doesn't sound abrasive like the reference build did. Layer like Pong's paddle voice — click + body — so each hit has weight.
-- **Paddle-hit feel.** Port Pong's stack: short hit-stop, paddle flash, ball squash on impact axis.
-- **Score / lives feedback.** Score-digit pulse on brick break. Lives indicator flash when a ball is lost.
-- **Optional motion.** Light ball trail, maybe shorter than Pong's since the ball moves faster at speed-level 3.
-- **Speed-ramp moment.** Each ramp trigger could get a tiny audio cue ("kick up") so the player feels the difficulty bumping.
-
-Restraint principle still applies — every dial conservative, cumulative feel over individual dominance. The Atari silhouette has to hold.
+First juice playtest used **row-based** brick pitch — each row a distinct note. Ascending sequences during tunnel chain-clears felt triumphant, but the same schem

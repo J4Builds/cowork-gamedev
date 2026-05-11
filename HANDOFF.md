@@ -4,30 +4,32 @@ Read this first at the start of every session. Quick context bridge — pointers
 
 ## Last session — 2026-05-11
 
-Built the **proto-002-breakout macro pass** end-to-end in one session. Faithful 1976 clone: paddle, ball, 8×14 brick wall, classic palette, row-based scoring (7/5/3/1), three-stage speed ramp (hit 4 / hit 12 / first red-row hit), 3 lives, persistent brick state across deaths, paddle-position-based ball steering, AABB collision with minimum-penetration-depth side detection. ~355 lines, all tunables hoisted to a constants block.
+**proto-002-breakout shipped in one session.** Macro pass + juice pass both landed.
 
-- First playtest validated the fun test: the tunneling moment (ball escapes into a side channel, slips above the wall, chain-clears rows from underneath the ceiling) emerged naturally — John's verdict: "the most satisfying part."
-- No juice this session — explicitly deferred. Same playbook as Pong: macro first, micro second.
-- New gamedev concepts introduced cleanly: many-entity AABB collision, side detection by minimum penetration depth, latched level-based speed ramps.
-- Reference-build observation worth carrying into the juice pass: the brick-hit audio in the itch.io build (Rin Est) sounded harsh / "like an error." Atari used row-pitched square waves — the *pitch-per-row* idea is load-bearing for feedback and worth keeping, but soft waveforms (sine/triangle, layered like Pong's paddle voice) are the answer for not sounding abrasive.
+- Macro pass: paddle, ball, 8×14 brick wall, row scoring (7/5/3/1), three-stage speed ramp, paddle-position-based ball steering, AABB collision with minimum-penetration-depth side detection, 3 lives, persistent brick state across deaths. Validated on first playtest — tunneling moment emerged naturally as the fun.
+- Juice pass: full Pong-style stack (audio voices, hit-stop on paddle hits, paddle flash, axis-aware ball squash, brick particles, ball trail, score pulse, lives flash, ball-lost shake, terminal-phase overlay delay).
+- **Key design lesson from this session:** row-based brick pitch (Atari original scheme) plays an ASCENDING phrase when climbing the wall but a DESCENDING phrase when chain-clearing top-down — which is exactly the peak moment. Descending sequences register as "winding down" even when in-tune. Replaced with chain-index pentatonic that ratchets ascending regardless of physical row order, capping at the top, reset on paddle hit or `CHAIN_TIMEOUT` gap. New memory saved.
+- Final retune: dialed top speed 580 → 500 after the honest-intensity audio made the level-3 ramp feel too leapy.
+- Mount-sync gotcha reappeared on the big juice rewrite (file tools reported success, Linux showed truncated content). Recovered with bash heredoc; subsequent surgical patches done via python-in-bash with assertion-checked replacements.
 
 ## Active projects
 
-- **proto-002-breakout** — macro complete, juice pending. Live at https://j4builds.github.io/cowork-gamedev/projects/proto-002-breakout/. DESIGN.md, README.md, CUT.md present.
+(Empty — Breakout shipped, next prototype is John's call.)
 
 ## Open decisions / next session candidates
 
-1. **Juice pass on proto-002-breakout** — pre-committed direction. Port Pong's discipline (impact stack, audio voices, restrained dials). Specific focuses captured in the project README. Restraint principle applies (memory file documents it).
+1. **Start proto-003** — keep building foundational understanding before commercial ideas. Candidates: Snake (single-entity, growth-state), small platformer (gravity, jump-feel, level data), Tetris (rotation, line-clear, gravity). Genre choice is John's. For novel-feeling mechanics the validation-first rule applies; for clones the macro-then-micro + peak-moment principle does.
 2. **Something else** — John's call.
 
 ## Recently retired
 
-- **proto-001-pong** — shipped 2026-05-10. Faithful Atari Pong with three difficulty presets and a restrained juice pass. Live at https://j4builds.github.io/cowork-gamedev/projects/proto-001-pong/. Reference point for "what restrained juice feels like."
+- **proto-002-breakout** — shipped 2026-05-11. Faithful 1976 Breakout with full juice pass. Live at https://j4builds.github.io/cowork-gamedev/projects/proto-002-breakout/. Reference for chain-index ascending audio design and restraint-principle juice stacking on a clone.
+- **proto-001-pong** — shipped 2026-05-10. Faithful Atari Pong with three difficulty presets and a restrained juice pass. Live at https://j4builds.github.io/cowork-gamedev/projects/proto-001-pong/. Reference for "what restrained juice feels like."
 
 ## Pending tooling work
 
 - `studio/cowork-push.py` aborts if any tracked file shrinks >50% since the last commit (defends against the Cowork mount sync bug). If a legitimate large deletion is needed, run with `--allow-shrink`.
-- Mount sync gotcha: when `Read` returns truncated content or the script aborts on shrinkage, the workaround is to rewrite via bash heredoc to both `/tmp/cowork-mirror/<path>` and the working tree path, verify with `wc -c`, then push. Documented in COWORK_INSTRUCTIONS.md.
+- Mount sync gotcha confirmed (again) this session on the juice-pass rewrite. Reliable mitigations: (a) bash heredoc for full-file writes over a few hundred lines, (b) python-in-bash with assertion-checked `replace()` for surgical patches, (c) `sed -i` for single-line tweaks. The file tools (Write/Edit) can silently land on a stale view of the mount for files past ~350 lines. Always verify with `wc -l` and `node --check` after a write.
 
 ## Notion (workspace)
 
@@ -46,10 +48,4 @@ Claude maintains these. John doesn't update Notion manually.
 
 1. **This file (HANDOFF.md)** — fastest context restore.
 2. **studio/COWORK_INSTRUCTIONS.md** — how we work.
-3. **Active project's DESIGN.md and README.md** — deeper state for whatever we work on this session.
-
-## Retiring rules
-
-When a game ships or is abandoned: move it from "Active projects" to "Recently retired" with a one-line summary (date + outcome). Once "Recently retired" grows past ~5 entries, the oldest drop off. Those games still exist in `projects/` and Notion's Projects database; they don't need to clutter this short-context file.
-
-For "Pending tooling work": items get removed once resolved. If something lingers more than a session or two, it belongs in a real backlog (Notion Ideas database or GitHub Issues), not here.
+3. **Active project's 
