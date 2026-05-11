@@ -2,34 +2,31 @@
 
 Read this first at the start of every session. Quick context bridge — pointers, not a deep store.
 
-## Last session — 2026-05-10
+## Last session — 2026-05-11
 
-Polish pass on proto-001-pong — seven juice layers added in one bundle, validated on first playtest, no retuning needed:
+Built the **proto-002-breakout macro pass** end-to-end in one session. Faithful 1976 clone: paddle, ball, 8×14 brick wall, classic palette, row-based scoring (7/5/3/1), three-stage speed ramp (hit 4 / hit 12 / first red-row hit), 3 lives, persistent brick state across deaths, paddle-position-based ball steering, AABB collision with minimum-penetration-depth side detection. ~355 lines, all tunables hoisted to a constants block.
 
-- **Impact stack** on paddle hits: 50ms hit-stop (world freeze), 80ms paddle flash bloom, 70ms ball squash on impact axis (55% compression).
-- **Score stack**: 280ms decaying screen shake (7px peak), per-side score-digit pulse (450ms, 1.55× peak with ease-out).
-- **Motion**: 6-frame ball trail with fading alpha.
-- **Audio**: three Web Audio voices (paddle = layered click + sweep thump, wall = light tick, score = layered up/down sweep). AudioContext lazy-inits on first keypress. Zero asset files.
-- All knobs exposed as named constants at the top of `game.js` for one-line tuning.
-- Pong now declared **shipped**. John's verdict: "just enough juice to make it interesting, but not so much that it doesn't feel like the original. The balance is perfect."
-- Big lesson: restraint won. Conservative defaults across every dial added up to a feel that reads as polished without betraying the Atari silhouette. Watching Vlambeer's *Art of Screenshake* before tuning paid off — it gave John the vocabulary to evaluate what he was feeling.
+- First playtest validated the fun test: the tunneling moment (ball escapes into a side channel, slips above the wall, chain-clears rows from underneath the ceiling) emerged naturally — John's verdict: "the most satisfying part."
+- No juice this session — explicitly deferred. Same playbook as Pong: macro first, micro second.
+- New gamedev concepts introduced cleanly: many-entity AABB collision, side detection by minimum penetration depth, latched level-based speed ramps.
+- Reference-build observation worth carrying into the juice pass: the brick-hit audio in the itch.io build (Rin Est) sounded harsh / "like an error." Atari used row-pitched square waves — the *pitch-per-row* idea is load-bearing for feedback and worth keeping, but soft waveforms (sine/triangle, layered like Pong's paddle voice) are the answer for not sounding abrasive.
 
 ## Active projects
 
-(Empty — Pong shipped, Breakout starts next session.)
+- **proto-002-breakout** — macro complete, juice pending. Live at https://j4builds.github.io/cowork-gamedev/projects/proto-002-breakout/. DESIGN.md, README.md, CUT.md present.
 
 ## Open decisions / next session candidates
 
-1. **Start proto-002-breakout** — pre-committed direction. New mechanics: many-entity collision (bricks), level structure, brick state machines, optional powerups. Reuse the workflow (push script, Notion, Chrome smoke tests). Carry forward the juice principles validated on Pong.
+1. **Juice pass on proto-002-breakout** — pre-committed direction. Port Pong's discipline (impact stack, audio voices, restrained dials). Specific focuses captured in the project README. Restraint principle applies (memory file documents it).
 2. **Something else** — John's call.
 
 ## Recently retired
 
-- **proto-001-pong** — shipped 2026-05-10. Faithful Atari Pong with three difficulty presets and a restrained juice pass. Live at https://j4builds.github.io/cowork-gamedev/projects/proto-001-pong/. Reference point for "what restrained juice feels like" on future prototypes.
+- **proto-001-pong** — shipped 2026-05-10. Faithful Atari Pong with three difficulty presets and a restrained juice pass. Live at https://j4builds.github.io/cowork-gamedev/projects/proto-001-pong/. Reference point for "what restrained juice feels like."
 
 ## Pending tooling work
 
-- `studio/cowork-push.py` now aborts if any tracked file shrinks >50% since the last commit (defends against the Cowork mount sync bug). If a legitimate large deletion is needed, run with `--allow-shrink`.
+- `studio/cowork-push.py` aborts if any tracked file shrinks >50% since the last commit (defends against the Cowork mount sync bug). If a legitimate large deletion is needed, run with `--allow-shrink`.
 - Mount sync gotcha: when `Read` returns truncated content or the script aborts on shrinkage, the workaround is to rewrite via bash heredoc to both `/tmp/cowork-mirror/<path>` and the working tree path, verify with `wc -c`, then push. Documented in COWORK_INSTRUCTIONS.md.
 
 ## Notion (workspace)
