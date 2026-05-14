@@ -40,4 +40,16 @@ All dials in the JUICE KNOBS block. Final tuning: top speed dialed from 580 → 
 
 ### Audio design lesson learned this session
 
-First juice playtest used **row-based** brick pitch — each row a distinct note. Ascending sequences during tunnel chain-clears felt triumphant, but the same schem
+First juice playtest used **row-based** brick pitch — each row a distinct note. Ascending sequences during tunnel chain-clears felt triumphant, but the same scheme played DESCENDING phrases when the ball cleared rows top-down (the peak moment). Descending sequences register as "winding down" even when the notes are in tune — psychoacoustic asymmetry.
+
+Replaced with **chain-index pitch**: each consecutive brick within `CHAIN_TIMEOUT` (0.3s) ratchets to the next ascending note, capping at the top of the pentatonic table. Paddle hit or timeout resets to index 0. Tunnel chain-clears now *always* ascend regardless of which physical rows the ball is hitting. Cost: lose row identification in audio. Visual color already encoded the row; no real loss.
+
+Principle to carry forward: when designing per-event audio for chains or streaks, the audio sequence must be ascending or steady, never descending — regardless of what the action visually is. If the peak moment involves a sequence of events, descending audio actively works against the player's perception.
+
+## Known issues
+
+None reported. Corner collisions resolve to the larger-overlap axis by tie-break — acceptable.
+
+## Next session
+
+Breakout is shipped. Next prototype is John's call. Default candidates per the working principles: proto-003 in a new genre to keep building foundational understanding (Snake? small platformer? something with novel mechanics where the validation-first rule applies instead of macro-then-micro).

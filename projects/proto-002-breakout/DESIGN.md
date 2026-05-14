@@ -36,4 +36,7 @@ The *plink* of breaking a brick, and the chain of plinks when the ball gets abov
 **Shipped 2026-05-11.** Macro pass and juice pass both landed in one session.
 
 - Macro pass: faithful 1976 mechanics. Fun test validated on first playtest — the tunneling moment emerged naturally without coaching.
-- Juice pass: ported Pong's discipline (audio voices, hit-stop on paddle hits, paddle flash, axis-aware ba
+- Juice pass: ported Pong's discipline (audio voices, hit-stop on paddle hits, paddle flash, axis-aware ball squash, ball trail, brick particles, score pulse, lives flash, ball-lost shake, terminal-phase overlay delay).
+- Mid-juice retune: dropped row-based brick audio in favor of chain-index pentatonic ascending after playtest revealed that descending pitch phrases during tunnel chain-clears registered as disruptive. Also dialed top speed 580 → 500 after the honest-intensity audio made the level-3 ramp feel too leapy.
+
+Reference for future projects: how restrained juice layers compound to a polished feel without betraying the Atari silhouette, and how ascending-only chain audio supports peak moments.

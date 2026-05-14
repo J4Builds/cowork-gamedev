@@ -48,4 +48,10 @@ Claude maintains these. John doesn't update Notion manually.
 
 1. **This file (HANDOFF.md)** — fastest context restore.
 2. **studio/COWORK_INSTRUCTIONS.md** — how we work.
-3. **Active project's 
+3. **Active project's DESIGN.md and README.md** — deeper state for whatever we work on this session.
+
+## Retiring rules
+
+When a game ships or is abandoned: move it from "Active projects" to "Recently retired" with a one-line summary (date + outcome). Once "Recently retired" grows past ~5 entries, the oldest drop off. Those games still exist in `projects/` and Notion's Projects database; they don't need to clutter this short-context file.
+
+For "Pending tooling work": items get removed once resolved. If something lingers more than a session or two, it belongs in a real backlog (Notion Ideas database or GitHub Issues), not here.
