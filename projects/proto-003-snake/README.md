@@ -2,7 +2,7 @@
 
 ## Status
 
-playable (macro pass complete, juice pass deferred)
+shipped
 
 ## How to run
 
@@ -12,33 +12,27 @@ Open `index.html` in any modern browser. Or play live at:
 ## Controls
 
 - **↑ ↓ ← →** or **W A S D** — turn the snake
-- **SPACE** — start / restart
+- **SPACE** — start / pause / resume / restart
 
 ## What works
 
-- 40 × 28 grid (20px cells), Nokia LCD palette.
-- Tick-based simulation. Render runs at 60fps via `requestAnimationFrame`, but the snake only advances on tick boundaries (8 / 12 / 16 ticks/sec across three stages).
-- Three-stage speed ramp triggered by snake length: stage 2 at length 10 (after 7 food), stage 3 at length 22 (after 19 food). Threshold-tuned from the initial 8/16 after first playtest revealed those promotions came too early.
-- **Double-buffered direction queue (capacity 2)** with chain-validated 180° rejection — handles tight-corner double-taps without losing inputs. Replaced a single-slot queue that felt laggy on rapid two-key turns.
-- Self-collision check excludes the tail when the snake isn't growing (tail will vacate that tick).
-- Food respawns on a random empty cell each time it's eaten.
-- Title → playing → game over → restart, all via SPACE.
-- Score / best / length in the HUD.
-- **Macro-pass playtest (2026-05-14):** input model and ramp validated. Core loop confirmed.
+### Macro pass
 
-## Known issues
+- 40 × 28 grid (20px cells), neutral zinc palette.
+- Tick-based simulation at 60fps render / variable tick sim. Render decoupled from sim — that's the fundamental difference from Pong/Breakout.
+- Three-stage speed ramp triggered by snake length: stage 2 at length 10 (after 7 food), stage 3 at length 22 (after 19 food).
+- Double-buffered direction queue (capacity 2) with chain-validated 180° rejection — handles tight-corner double-taps without losing inputs.
+- Self-collision check excludes the tail when not growing.
+- Walls kill. Food respawns on a random empty cell.
+- Title / playing / paused / dying / game-over states, all advanced via SPACE.
+- BEST score persisted via `localStorage`.
 
-None reported.
+### Juice pass
 
-## Audio / juice
+- **Audio.** Eat sound is a downloaded Foley sample (`sfx_munch.wav`) loaded via `HTMLAudioElement` (works under `file://` — fetch+decodeAudioData is blocked there by CORS). Volume tuned at 0.7. Synthesized voices for speed-ramp up-sweep, death sawtooth descent, and a 3-note F-minor arpeggio on game-over. AudioContext lazy-inits on first SPACE.
+- **Visuals.** Snake-II-style rounded body via `roundRect` with selective corner radii — segments visually merge at corners so the snake reads as a continuous worm. Direction-aware eyes on the head (clearer at speed than color alone). Score-digit pulse on eat. Death-phase head flash + ~4px screen shake. Overlay-delay after game-over so audio cue lands first.
+- **Restraint.** The eat-ring playfield flash was cut after playtest — the audio alone is sufficient feedback for the eat event.
 
-Deferred. No audio, no particles, no hit-stop, no screen effects — same playbook as Breakout: validate the macro pass first, then a possible juice session.
+### Audio design lessons from this session
 
-## Next session
-
-Two paths from here:
-
-1. **Juice pass on Snake** — port the same restrained-juice stack we built for Breakout (Web Audio voices, eat sound that ascends per chain index when food is grabbed in quick succession, ball-lost sweep variant for game-over, score pulse, brief screen flash on death, etc.). The ascending-audio principle from Breakout's lesson would carry directly to per-food chain audio if John eats two pellets in fast succession.
-2. **Skip to proto-004** — move on to Tetris next per the learning ladder. Snake is functionally complete; juice is taste polish, not concept learning.
-
-John's call at the start of next session.
+1. **Sparse-chain audio.** Initial juice pass had pentatonic chain-ascending pitch on rapid eats (per the Breakout playbook). John pushed back: in Snake, eats are too sparse for the chain to dominate, so the *reset* to baseline registers as a descent and feels jarring. The ascending-au
