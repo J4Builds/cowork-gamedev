@@ -106,11 +106,13 @@ function tone({ type = "sine", freq, freq2, start, attack = 0.01, dur = 0.2, pea
   osc.stop(start + dur + 0.05);
 }
 
-// Lock thump — short low sine that sweeps down. Soft "clack" on settle.
+// Lock tap — wood-block-style percussive click. Mid-range triangle wave so
+// it's audible on small speakers (an earlier low-freq sine sweep at 120->60 Hz
+// was below the physical range of most laptop/monitor drivers).
 function playLock() {
   if (!audioCtx) return;
   const t = audioCtx.currentTime;
-  tone({ type: "sine", freq: 120, freq2: 60, start: t, attack: 0.003, dur: 0.12, peak: 0.30 });
+  tone({ type: "triangle", freq: 380, freq2: 180, start: t, attack: 0.002, dur: 0.08, peak: 0.28 });
 }
 
 // Line clear — pitch/voicing scales with clear count. Sparse-event audio
