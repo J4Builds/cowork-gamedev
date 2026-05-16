@@ -25,12 +25,12 @@ const H = canvas.height;
 
 const COLS = 10;
 const ROWS = 20;
-const CELL = 30;                    // board cell size, px
+const CELL = 40;                    // board cell size, px
 const BOARD_X = 20;                 // board top-left x in canvas px
 const BOARD_Y = 20;                 // board top-left y in canvas px
 const BOARD_W = COLS * CELL;        // 300
 const BOARD_H = ROWS * CELL;        // 600
-const PANEL_X = BOARD_X + BOARD_W + 20;  // 340
+const PANEL_X = BOARD_X + BOARD_W + 20;  // 440
 
 const SOFT_DROP_FACTOR = 10;        // soft drop is 10x faster than current gravity
 const LOCK_DELAY = 0.5;             // seconds piece can rest on ground before locking
@@ -70,6 +70,92 @@ function spawnX(type) {
 //   (x, y)  ->  (N - 1 - y, x)
 function rotate90cw(blocks, size) {
   return blocks.map(([x,y]) => [size - 1 - y, x]);
+}
+
+// ---------- 3a. Audio (Web Audio synthesis) ----------
+// All sounds are synthesized — no samples. Per the synthesis-vs-Foley rule,
+// tonal/percussive game sounds are exactly what synth handles well.
+// Lazy-init on first user interaction (browser autoplay policy).
+let audioCtx = null;
+let masterGain = null;
+function initAudio() {
+  if (audioCtx) return;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return;
+  audioCtx = new AC();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0.5;
+  masterGain.connect(audioCtx.destination);
+}
+
+// Small helper: create a tone (osc + gain) with ADSR-ish envelope.
+function tone({ type = "sine", freq, freq2, start, attack = 0.01, dur = 0.2, peak = 0.15 }) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, start);
+  if (freq2 !== undefined) {
+    osc.frequency.exponentialRampToValueAtTime(freq2, start + dur);
+  }
+  g.gain.setValueAtTime(0, start);
+  g.gain.linearRampToValueAtTime(peak, start + attack);
+  g.gain.exponentialRampToValueAtTime(0.001, start + dur);
+  osc.connect(g).connect(masterGain);
+  osc.start(start);
+  osc.stop(start + dur + 0.05);
+}
+
+// Lock thump — short low sine that sweeps down. Soft "clack" on settle.
+function playLock() {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  tone({ type: "sine", freq: 120, freq2: 60, start: t, attack: 0.003, dur: 0.12, peak: 0.18 });
+}
+
+// Line clear — pitch/voicing scales with clear count. Sparse-event audio
+// (per Snake): each event is self-contained, no chain pitch.
+//   1: single tone
+//   2: fifth interval (perfect fifth)
+//   3: triad chord
+//   4 (Tetris): ascending arpeggio with longer release — the payoff moment
+function playLineClear(count) {
+  if (!audioCtx) return;
+  const t0 = audioCtx.currentTime;
+  if (count === 4) {
+    // Ascending arpeggio: E5 A5 C#6 E6, staggered 60ms apart.
+    const notes = [659, 880, 1109, 1319];
+    notes.forEach((f, i) => {
+      tone({ type: "triangle", freq: f, start: t0 + i * 0.06, attack: 0.005, dur: 0.32, peak: 0.13 });
+    });
+  } else {
+    const sets = {
+      1: [880],
+      2: [880, 1319],
+      3: [880, 1109, 1319],
+    };
+    const notes = sets[count] || [880];
+    notes.forEach((f) => {
+      tone({ type: "sine", freq: f, start: t0, attack: 0.005, dur: 0.18, peak: 0.12 });
+    });
+  }
+}
+
+// Level-up sting — quick rising sine sweep.
+function playLevelUp() {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  tone({ type: "sine", freq: 440, freq2: 880, start: t, attack: 0.02, dur: 0.25, peak: 0.12 });
+}
+
+// Game over — descending three-note minor: A5, F5, D5.
+function playGameOver() {
+  if (!audioCtx) return;
+  const t0 = audioCtx.currentTime;
+  const notes = [880, 698, 587];
+  notes.forEach((f, i) => {
+    tone({ type: "sine", freq: f, start: t0 + i * 0.18, attack: 0.02, dur: 0.42, peak: 0.13 });
+  });
 }
 
 // ---------- 4. Game state ----------
@@ -231,11 +317,15 @@ function ghostY() {
 // ---------- 8. Lock, line clear, scoring, level ----------
 function finishLock() {
   lockPiece();
+  playLock();
+  const beforeLevel = state.level;
   const cleared = clearLines();
   if (cleared > 0) {
     state.lines += cleared;
     state.score += LINE_SCORES[cleared] * state.level;
     state.level = 1 + Math.floor(state.lines / 10);
+    playLineClear(cleared);
+    if (state.level > beforeLevel) playLevelUp();
   }
   if (state.score > state.best) {
     state.best = state.score;
@@ -243,6 +333,7 @@ function finishLock() {
   }
   if (!spawnNext()) {
     state.phase = "gameover";
+    playGameOver();
   }
 }
 
@@ -310,6 +401,7 @@ function pollHold(key, hold, dt) {
 function update(dt) {
   if (state.phase === "title") {
     if (consumeJustPressed("Enter")) {
+      initAudio();
       resetGame();
       state.phase = "playing";
     }
@@ -319,6 +411,7 @@ function update(dt) {
 
   if (state.phase === "gameover") {
     if (consumeJustPressed("Enter")) {
+      initAudio();
       resetGame();
       state.phase = "playing";
     }
@@ -328,6 +421,9 @@ function update(dt) {
 
   if (state.phase === "paused") {
     if (consumeJustPressed("p") || consumeJustPressed("P")) {
+      state.phase = "playing";
+    } else if (consumeJustPressed("Enter")) {
+      resetGame();
       state.phase = "playing";
     }
     justPressed.clear();
@@ -461,11 +557,11 @@ function drawNext() {
   const px = PANEL_X;
   const py = BOARD_Y;
   ctx.fillStyle = "#a1a1aa";
-  ctx.font = "14px system-ui, sans-serif";
-  ctx.fillText("NEXT", px, py + 14);
+  ctx.font = "16px system-ui, sans-serif";
+  ctx.fillText("NEXT", px, py + 16);
 
   // Preview box: 4x4 cells at 22px each, plus padding.
-  const preCell = 22;
+  const preCell = 28;
   const boxX = px;
   const boxY = py + 24;
   const boxSize = 4 * preCell;
@@ -489,7 +585,7 @@ function drawNext() {
 
 function drawHUD() {
   const px = PANEL_X;
-  let py = BOARD_Y + 24 + 4 * 22 + 24; // below next preview
+  let py = BOARD_Y + 28 + 4 * 28 + 28; // below next preview
 
   ctx.fillStyle = "#a1a1aa";
   ctx.font = "14px system-ui, sans-serif";
@@ -502,18 +598,18 @@ function drawHUD() {
   ];
   for (const [label, val] of rows) {
     ctx.fillStyle = "#71717a";
+    ctx.font = "14px system-ui, sans-serif";
     ctx.fillText(label, px, py);
     ctx.fillStyle = "#e4e4e7";
-    ctx.font = "bold 18px system-ui, sans-serif";
-    ctx.fillText(String(val), px, py + 20);
-    ctx.font = "14px system-ui, sans-serif";
-    py += 44;
+    ctx.font = "bold 22px system-ui, sans-serif";
+    ctx.fillText(String(val), px, py + 24);
+    py += 52;
   }
 
   // Controls.
   py += 12;
   ctx.fillStyle = "#52525b";
-  ctx.font = "11px system-ui, sans-serif";
+  ctx.font = "13px system-ui, sans-serif";
   const controls = [
     "← →   MOVE",
     "↑       ROTATE",
@@ -523,7 +619,7 @@ function drawHUD() {
   ];
   for (const line of controls) {
     ctx.fillText(line, px, py);
-    py += 14;
+    py += 18;
   }
 }
 
@@ -531,12 +627,12 @@ function drawOverlay(title, subtitle) {
   ctx.fillStyle = "rgba(9, 9, 11, 0.78)";
   ctx.fillRect(BOARD_X, BOARD_Y, BOARD_W, BOARD_H);
   ctx.fillStyle = "#e4e4e7";
-  ctx.font = "bold 40px system-ui, sans-serif";
+  ctx.font = "bold 56px system-ui, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(title, BOARD_X + BOARD_W / 2, BOARD_Y + BOARD_H / 2 - 12);
+  ctx.fillText(title, BOARD_X + BOARD_W / 2, BOARD_Y + BOARD_H / 2 - 16);
   ctx.fillStyle = "#a1a1aa";
-  ctx.font = "16px system-ui, sans-serif";
-  ctx.fillText(subtitle, BOARD_X + BOARD_W / 2, BOARD_Y + BOARD_H / 2 + 24);
+  ctx.font = "20px system-ui, sans-serif";
+  ctx.fillText(subtitle, BOARD_X + BOARD_W / 2, BOARD_Y + BOARD_H / 2 + 28);
   ctx.textAlign = "left";
 }
 
@@ -556,7 +652,7 @@ function render() {
   if (state.phase === "title") {
     drawOverlay("TETRIS", "PRESS ENTER TO START");
   } else if (state.phase === "paused") {
-    drawOverlay("PAUSED", "PRESS P TO RESUME");
+    drawOverlay("PAUSED", "P RESUME  ·  ENTER RESTART");
   } else if (state.phase === "gameover") {
     drawOverlay("GAME OVER", "PRESS ENTER TO RESTART");
   }

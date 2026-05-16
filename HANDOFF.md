@@ -2,26 +2,21 @@
 
 Read this first at the start of every session. Quick context bridge — pointers, not a deep store.
 
-## Last session — 2026-05-14
+## Last session — 2026-05-16
 
-**proto-003-snake shipped.** Macro pass + juice pass both landed.
+**Two things landed this session.**
 
-- Macro pass: 40×28 grid, tick-based sim (8/12/16 t/s with length thresholds 10/22), walls-kill, double-buffered capacity-2 chain-validated direction queue (fixed the original single-slot lost-input bug on tight corners).
-- Juice pass: modernized to a neutral zinc palette (dropped the Nokia LCD greens after they didn't read at speed and John wanted modern). Snake-II-style rounded body via selective `roundRect` corner radii. Direction-aware eyes on the head. Score-pulse on eat. Death-phase head-flash + screen shake. Game-over overlay-delay. BEST persisted to `localStorage`. Pause/resume on SPACE.
-- **Audio went from pure synth to mixed.** The non-eat voices (speed-ramp up-sweep, death sweep, game-over arpeggio) are synthesized. The eat sound is a Foley sample (`sfx_munch.wav`) loaded via `HTMLAudioElement` — Web Audio's `fetch + decodeAudioData` is blocked under `file://` due to CORS, so the HTML audio element is the way to keep local playability.
-- **Two design lessons from this session:**
-  1. Sparse-chain audio: the ascending-audio principle from Breakout assumes DENSE chains. In Snake, eats are sparse, so the chain *reset* is more frequent than the climb and feels descending. Removed chain pitch entirely. Memory updated with the new sub-rule.
-  2. Synthesis vs Foley: three rounds of Web Audio iteration on a "munch" never landed it. Real mouth sounds are recorded Foley; filtered noise can't fake the organic character. New memory saved (`synthesis_vs_foley_principle`).
-- File ended up at ~500 lines. Edits done via python-in-bash with assertion-checked replacements throughout; no mount-sync issue this session.
+1. **Mount-sync rule, locked.** Reproduced the Cowork mount-sync bug under controlled conditions — three sequential host-side Edits on a 500-line file silently truncated bash's view by 4 lines while host view stayed correct. The 50% shrink guard is too coarse to catch realistic damage. New rule: all writes to tracked source files go through bash (heredoc / python-in-bash with assertion-checked replace / sed -i). Host file tools remain fine for markdown docs and memory files. Full diagnosis in `studio/COWORK_INSTRUCTIONS.md`.
+2. **proto-004-tetris macro pass shipped.** 10×20 board, 7 tetrominoes, 7-bag randomizer, simple rotation with 1/2-cell wall kicks (no SRS, no T-spins), ghost piece, next-piece preview, hard drop, soft drop, 0.5s lock delay with rotation reset, line clear + cascade, standard 1/3/5/8 hundred scoring × level, NES-curve gravity ramp, top-out, restart, title/pause, localStorage BEST. Neutral dark palette with the standard tetromino colors. ~580 lines, written entirely via bash heredoc per the new rule. Live at https://j4builds.github.io/cowork-gamedev/projects/proto-004-tetris/.
 
 ## Active projects
 
-(Empty — proto-003-snake shipped, next prototype is John's call.)
+- **proto-004-tetris** — macro pass shipped. Juice pass is the obvious next session: line-clear animation (a 4-line clear in particular deserves a flourish), lock-flash on settle, hard-drop trail, audio (lock thump, line-clear sound scaling with clear count, level-up sting), game-over fill-up animation. Sparse-event rules apply (per Snake's lesson) — Tetris is sparse, not dense, so each event probably wants its own self-contained sound rather than chain-escalating pitch. DAS tuning if 150ms/50ms feels sluggish.
 
 ## Open decisions / next session candidates
 
-1. **proto-004 — Tetris.** Next rung on the learning ladder. Builds on Snake's tick-based foundation; adds piece rotation with wall-kicks, line-clear detection + cascade, lock delay, bag randomization. Same macro-then-micro discipline applies (it's a known genre).
-2. **proto-004 — small platformer.** Genre everyone underestimates. Introduces continuous-physics, tile-grid collisions resolved per-axis, and jump-feel (variable height, coyote time, jump buffer, apex float). Genuinely harder than Tetris despite seeming simpler.
+1. **Juice pass on proto-004-tetris.** Default next step.
+2. **proto-005 — small platformer.** Genre everyone underestimates. Introduces continuous-physics, tile-grid collisions resolved per-axis, and jump-feel (variable height, coyote time, jump buffer, apex float). Genuinely harder than Tetris despite seeming simpler.
 3. **Something else** — John's call.
 
 ## Recently retired

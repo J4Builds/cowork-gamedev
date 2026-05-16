@@ -2,7 +2,7 @@
 
 ## Status
 
-prototype (macro pass complete, juice pass pending)
+playable (macro + juice pass complete)
 
 ## How to run
 
@@ -51,22 +51,30 @@ Open `index.html` in any modern browser. Or play live at:
 
 None yet — bring playtest reports.
 
+## Juice pass (this session)
+
+Per playtest feedback, scope stayed tight — the game already felt good mechanically. Three things landed:
+
+1. **Resize.** Cell size 30 → 40px. Board now 400×800, canvas 620×840. Fonts and panel scaled proportionally. Reads with more presence on screen instead of feeling cramped.
+2. **Restart from pause.** ENTER while paused now restarts the run (consistent with ENTER on title and gameover). Overlay text updated: "P RESUME · ENTER RESTART".
+3. **Audio.** All Web Audio synthesis — no samples needed (these are tonal/percussive, exactly what synth nails per the synthesis-vs-Foley rule). Lazy-init on first ENTER per browser autoplay policy.
+   - **Lock thump.** Short low sine sweep 120→60 Hz, 120ms. Soft "clack" on settle, fires on every piece lock (including hard drops).
+   - **Line clear, scales with count.** Sparse-event design per the Snake lesson — no chain pitch (would feel descending on the reset, Tetris locks are seconds apart). Each event is self-contained:
+     - 1 line: single A5 tone.
+     - 2 lines: A5 + E6 (perfect fifth).
+     - 3 lines: A5 + C#6 + E6 (major triad).
+     - 4 lines (Tetris): E5 → A5 → C#6 → E6 ascending arpeggio, triangle wave, longer release, 60ms stagger. Distinctly the payoff.
+   - **Level up.** A4 → A5 ascending sweep, 250ms. Fires when crossing a 10-line threshold.
+   - **Game over.** Descending three-note minor: A5 → F5 → D5, 180ms apart. Sine.
+   - All volumes conservative (peak 0.12–0.18) per the juice restraint principle.
+
 ## Next session
 
-Juice pass. Per the macro-then-micro discipline: now that the systems are correct, the next pass tunes feel.
+Macro + juice both shipped. Tetris is at "playable" — could go straight to retired, or there's a polish-pass opportunity if playtest reveals anything.
 
-Likely targets in priority order:
+Open follow-ups if we return:
 
-1. **Line-clear animation.** Right now lines snap out instantly. Even a 100ms flash + fade would massively improve the satisfaction of multi-line clears. Quadruple line clear (Tetris) deserves its own bigger flourish.
-2. **Audio.** Lock thump on piece settle. Line-clear sound that scales with clear count (1-line vs 4-line distinctly different — per the ascending-audio principle, but careful since Tetris is sparse-event like Snake). Level-up sting.
-3. **Lock flash.** Brief brightening of the piece's blocks on settle, so the lock event is visible.
-4. **Game-over fill.** Fill the board row-by-row on top-out (classic Tetris animation), then show overlay.
-5. **Hard-drop trail.** A faint vertical streak from the piece's pre-drop position to the lock position, so hard drops read as decisive instead of teleporty.
-6. **Level transition.** Subtle color shift in the well frame at level-up, or brief flash.
-
-Restraint principle applies — every individual element conservative; cumulative feel should be polished without any single dial dominating.
-
-Also consider:
-
-- **DAS tuning** (delayed auto-shift). The macro uses 150ms / 50ms; competitive Tetris players want shorter DAS. Worth a tuning pass if it feels sluggish.
-- **Sparse vs dense audio.** Tetris is sparse (locks are seconds apart) — chain pitch escalation per Breakout would feel descending on the reset, per the Snake lesson. Each event probably wants its own self-contained sound.
+- **DAS tuning** (150ms initial / 50ms repeat). Competitive players want shorter; might be sluggish for fast play.
+- **Visual juice** — explicitly skipped per playtest feedback. Line-clear animation, lock flash, game-over fill, hard-drop trail could all come if needed.
+- **SRS upgrade** if T-spins matter.
+- **Hold slot** for strategic depth.
