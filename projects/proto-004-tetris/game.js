@@ -87,11 +87,11 @@ function initAudio() {
   masterGain = audioCtx.createGain();
   masterGain.gain.value = 0.8;
   masterGain.connect(audioCtx.destination);
-  // Separate bus for the ambient pad. Starts at 0, faded in by musicLoop.
+  // Separate bus for the music. Starts at 0, faded in by musicLoop.
   musicGain = audioCtx.createGain();
   musicGain.gain.value = 0;
   musicGain.connect(masterGain);
-  startPad();
+  lastStepTime = audioCtx.currentTime;
   musicLoop();
 }
 
@@ -167,37 +167,27 @@ function playGameOver() {
   });
 }
 
-// ---------- 3b. Background music (ambient sine pad) ----------
-// Persistent four-voice sine pad — no rhythm, no melody. Voices fade
-// between chords on stack-height changes. musicGain fades to silence
-// during pause/title/gameover so it never competes with SFX or feels
-// busy. All voices are pure sines (no harmonics = no harshness).
+// ---------- 3b. Background music (light techno) ----------
+// Beat-grid scheduler at fixed 120 BPM, three layers added by stack
+// height. No melody — all rhythm — so it stays in the background.
+// Constant tempo: intensity adds voices, not speed.
+//   Tier 1: kick on every quarter note
+//   Tier 2: + closed hi-hat on off-beats
+//   Tier 3: + syncopated bass
 
-const PAD_VOICES = [];   // populated by startPad(); { osc, gain } per voice
-const PAD_FADE = 1.5;    // seconds for chord transitions
-const MUSIC_FADE = 0.6;  // seconds for play/pause fade-in/out
+const STEPS_PER_BAR  = 16;     // 16th-note grid
+const TECHNO_BPM     = 120;
+const STEP_DURATION  = 60 / TECHNO_BPM / 4;  // seconds per 16th note
 const MUSIC_PLAY_GAIN = 0.3;
+const MUSIC_FADE     = 0.4;    // gain fade-in/out on phase change
 
-// Per-tier chord. Voices:
-//   0 — root A3 (always present)
-//   1 — fifth E4 (always present)
-//   2 — octave A4 (fades in at tier 2)
-//   3 — color tone: C5 (minor 3rd) at tier 2, G4 (7th) at tier 3
-// All in A minor, no dissonance — denser, slightly more tense at higher
-// tiers, but never alarming.
-const PAD_FREQS = {
-  1: [220, 329.63, 440, 440],
-  2: [220, 329.63, 440, 523.25],
-  3: [220, 329.63, 440, 392],
-};
-const PAD_GAINS = {
-  1: [0.20, 0.15, 0,    0   ],
-  2: [0.18, 0.14, 0.10, 0.10],
-  3: [0.16, 0.14, 0.12, 0.12],
-};
+// Bass note per bar (4-bar progression in A minor).
+const BASS_PROGRESSION = [110, 110, 98, 110];  // A2, A2, G2, A2
 
-let prevIntensity   = -1;
-let prevMusicTarget = -1;
+let lastStepTime       = 0;
+let lastScheduledStep  = -1;
+let prevMusicTarget    = -1;
+let hatNoiseBuffer     = null;
 
 function intensityFromBoard() {
   for (let r = 0; r < ROWS; r++) {
@@ -211,40 +201,88 @@ function intensityFromBoard() {
   return 1;
 }
 
-function startPad() {
-  if (PAD_VOICES.length > 0 || !audioCtx) return;
-  for (let i = 0; i < 4; i++) {
-    const osc = audioCtx.createOscillator();
-    const g = audioCtx.createGain();
-    osc.type = "sine";
-    osc.frequency.value = PAD_FREQS[1][i];
-    g.gain.value = 0;
-    osc.connect(g).connect(musicGain);
-    osc.start();
-    PAD_VOICES.push({ osc, gain: g });
-  }
+// Cached white-noise buffer for the hi-hat (cheap to reuse, no need to
+// regenerate per hit).
+function ensureNoiseBuffer() {
+  if (hatNoiseBuffer || !audioCtx) return;
+  const dur = 0.1;
+  const size = Math.floor(audioCtx.sampleRate * dur);
+  hatNoiseBuffer = audioCtx.createBuffer(1, size, audioCtx.sampleRate);
+  const data = hatNoiseBuffer.getChannelData(0);
+  for (let i = 0; i < size; i++) data[i] = Math.random() * 2 - 1;
 }
 
-function updatePad(intensity) {
-  if (PAD_VOICES.length === 0 || !audioCtx) return;
-  const freqs = PAD_FREQS[intensity] || PAD_FREQS[1];
-  const gains = PAD_GAINS[intensity] || PAD_GAINS[1];
-  const t = audioCtx.currentTime;
-  for (let i = 0; i < PAD_VOICES.length; i++) {
-    const v = PAD_VOICES[i];
-    v.osc.frequency.cancelScheduledValues(t);
-    v.osc.frequency.setValueAtTime(v.osc.frequency.value, t);
-    v.osc.frequency.linearRampToValueAtTime(freqs[i], t + PAD_FADE);
-    v.gain.gain.cancelScheduledValues(t);
-    v.gain.gain.setValueAtTime(v.gain.gain.value, t);
-    v.gain.gain.linearRampToValueAtTime(gains[i], t + PAD_FADE);
+// Kick drum — square wave thump, exponential pitch sweep 180->55 Hz.
+// Square (not sine) keeps it audible on small speakers via the harmonics.
+function playKick(time) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  osc.type = "square";
+  osc.frequency.setValueAtTime(180, time);
+  osc.frequency.exponentialRampToValueAtTime(55, time + 0.06);
+  g.gain.setValueAtTime(0, time);
+  g.gain.linearRampToValueAtTime(0.30, time + 0.002);
+  g.gain.exponentialRampToValueAtTime(0.001, time + 0.12);
+  osc.connect(g).connect(musicGain);
+  osc.start(time);
+  osc.stop(time + 0.14);
+}
+
+// Closed hi-hat — short high-passed noise tick.
+function playHat(time) {
+  if (!audioCtx) return;
+  ensureNoiseBuffer();
+  const src = audioCtx.createBufferSource();
+  src.buffer = hatNoiseBuffer;
+  const filt = audioCtx.createBiquadFilter();
+  filt.type = "highpass";
+  filt.frequency.value = 7000;
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(0.10, time);
+  g.gain.exponentialRampToValueAtTime(0.001, time + 0.035);
+  src.connect(filt).connect(g).connect(musicGain);
+  src.start(time);
+  src.stop(time + 0.05);
+}
+
+// Bass pulse — short square at low-mid freq.
+function playBass(time, freq) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  osc.type = "square";
+  osc.frequency.value = freq;
+  g.gain.setValueAtTime(0, time);
+  g.gain.linearRampToValueAtTime(0.18, time + 0.005);
+  g.gain.exponentialRampToValueAtTime(0.001, time + 0.10);
+  osc.connect(g).connect(musicGain);
+  osc.start(time);
+  osc.stop(time + 0.12);
+}
+
+function scheduleStep(step, time) {
+  const intensity  = intensityFromBoard();
+  const stepInBar  = step % STEPS_PER_BAR;
+  const bar        = Math.floor(step / STEPS_PER_BAR) % BASS_PROGRESSION.length;
+
+  // Kick: every quarter note (steps 0/4/8/12).
+  if (stepInBar % 4 === 0) playKick(time);
+
+  // Tier 2+: closed hi-hat on off-beats (steps 2/6/10/14).
+  if (intensity >= 2 && stepInBar % 4 === 2) playHat(time);
+
+  // Tier 3: syncopated bass — root on step 0, 6, 10 (three hits per bar).
+  if (intensity >= 3 && (stepInBar === 0 || stepInBar === 6 || stepInBar === 10)) {
+    playBass(time, BASS_PROGRESSION[bar]);
   }
 }
 
 function musicLoop() {
   if (!audioCtx) { setTimeout(musicLoop, 100); return; }
   const t = audioCtx.currentTime;
-  // Music plays only during "playing" — silent on title, paused, gameover.
+
+  // Fade musicGain on phase change. Music plays only during "playing".
   const target = (state && state.phase === "playing") ? MUSIC_PLAY_GAIN : 0;
   if (target !== prevMusicTarget && musicGain) {
     musicGain.gain.cancelScheduledValues(t);
@@ -252,17 +290,22 @@ function musicLoop() {
     musicGain.gain.linearRampToValueAtTime(target, t + MUSIC_FADE);
     prevMusicTarget = target;
   }
+
+  // Schedule beats on the lookahead window during play.
   if (state && state.phase === "playing") {
-    const intensity = intensityFromBoard();
-    if (intensity !== prevIntensity) {
-      updatePad(intensity);
-      prevIntensity = intensity;
+    const ahead = 0.1;
+    while (lastStepTime + STEP_DURATION < t + ahead) {
+      lastStepTime += STEP_DURATION;
+      lastScheduledStep++;
+      scheduleStep(lastScheduledStep, lastStepTime);
     }
   } else {
-    // Reset so the chord re-establishes from tier 1 on next play session.
-    prevIntensity = -1;
+    // Outside of play: keep clock current so we don't replay a backlog
+    // when the game resumes.
+    lastStepTime = t;
   }
-  setTimeout(musicLoop, 250);
+
+  setTimeout(musicLoop, 25);
 }
 
 // ---------- 4. Game state ----------
