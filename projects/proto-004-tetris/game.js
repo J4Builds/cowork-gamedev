@@ -1,0 +1,578 @@
+// =============================================================
+// Tetris (proto-004) — macro pass.
+// HTML5 Canvas + vanilla JS, single file.
+//
+// Sections:
+//   1. Constants (grid, layout, timing, scoring, colors)
+//   2. Tetromino definitions
+//   3. Rotation helper
+//   4. Game state + reset
+//   5. 7-bag randomizer
+//   6. Spawn / collision / placement
+//   7. Movement, rotation, hard drop
+//   8. Lock, line clear, scoring, level
+//   9. Input
+//  10. update() — per-frame sim, state-machine driven
+//  11. render() — board, piece, ghost, HUD, overlays
+//  12. Game loop
+// =============================================================
+
+// ---------- 1. Constants ----------
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const W = canvas.width;
+const H = canvas.height;
+
+const COLS = 10;
+const ROWS = 20;
+const CELL = 30;                    // board cell size, px
+const BOARD_X = 20;                 // board top-left x in canvas px
+const BOARD_Y = 20;                 // board top-left y in canvas px
+const BOARD_W = COLS * CELL;        // 300
+const BOARD_H = ROWS * CELL;        // 600
+const PANEL_X = BOARD_X + BOARD_W + 20;  // 340
+
+const SOFT_DROP_FACTOR = 10;        // soft drop is 10x faster than current gravity
+const LOCK_DELAY = 0.5;             // seconds piece can rest on ground before locking
+const MOVE_INITIAL_DELAY = 0.15;    // seconds before auto-repeat kicks in
+const MOVE_REPEAT = 0.05;           // seconds between auto-repeat moves
+
+// Scoring: index = lines cleared this lock. Multiplied by level.
+const LINE_SCORES = [0, 100, 300, 500, 800];
+
+// Gravity per level — seconds per row drop. Approximates the NES curve.
+function gravityFor(level) {
+  return Math.max(0.05, Math.pow(0.8, level - 1));
+}
+
+// ---------- 2. Tetromino definitions ----------
+// Each piece has a bounding box size and a list of [x,y] cell offsets
+// within that box, in its spawn orientation. Rotation is computed via
+// rotate90cw() applied to the offsets.
+const PIECES = {
+  I: { size: 4, color: "#22d3ee", blocks: [[0,1],[1,1],[2,1],[3,1]] },
+  O: { size: 2, color: "#facc15", blocks: [[0,0],[1,0],[0,1],[1,1]] },
+  T: { size: 3, color: "#a855f7", blocks: [[1,0],[0,1],[1,1],[2,1]] },
+  S: { size: 3, color: "#22c55e", blocks: [[1,0],[2,0],[0,1],[1,1]] },
+  Z: { size: 3, color: "#ef4444", blocks: [[0,0],[1,0],[1,1],[2,1]] },
+  L: { size: 3, color: "#f97316", blocks: [[2,0],[0,1],[1,1],[2,1]] },
+  J: { size: 3, color: "#3b82f6", blocks: [[0,0],[0,1],[1,1],[2,1]] },
+};
+const PIECE_TYPES = ["I","O","T","S","Z","L","J"];
+
+// Spawn x for each piece — center the bounding box horizontally on COLS=10.
+function spawnX(type) {
+  return Math.floor((COLS - PIECES[type].size) / 2);
+}
+
+// ---------- 3. Rotation helper ----------
+// Rotate a set of blocks 90° CW within an NxN bounding box.
+//   (x, y)  ->  (N - 1 - y, x)
+function rotate90cw(blocks, size) {
+  return blocks.map(([x,y]) => [size - 1 - y, x]);
+}
+
+// ---------- 4. Game state ----------
+const state = {
+  phase: "title",          // "title" | "playing" | "paused" | "gameover"
+  board: [],               // ROWS x COLS, null or color string
+  current: null,           // { type, blocks, x, y, size, color }
+  next: null,              // same shape as current (spawn orientation)
+  bag: [],                 // upcoming pieces (7-bag)
+  score: 0,
+  lines: 0,
+  level: 1,
+  best: parseInt(localStorage.getItem("tetris_best") || "0", 10) || 0,
+
+  // Timing
+  dropTimer: 0,            // accumulates dt; when >= drop interval, piece drops 1 row
+  lockTimer: 0,            // accumulates when piece can't drop; locks at LOCK_DELAY
+  isOnGround: false,       // does current piece rest on ground/stack?
+  softDrop: false,         // ArrowDown held?
+
+  // Auto-repeat for left/right hold
+  leftHold:  { t: 0, charged: false },
+  rightHold: { t: 0, charged: false },
+};
+
+function emptyBoard() {
+  const b = [];
+  for (let r = 0; r < ROWS; r++) b.push(new Array(COLS).fill(null));
+  return b;
+}
+
+function resetGame() {
+  state.board = emptyBoard();
+  state.bag = [];
+  state.score = 0;
+  state.lines = 0;
+  state.level = 1;
+  state.dropTimer = 0;
+  state.lockTimer = 0;
+  state.isOnGround = false;
+  state.softDrop = false;
+  state.leftHold = { t: 0, charged: false };
+  state.rightHold = { t: 0, charged: false };
+  state.next = makePiece(drawFromBag());
+  spawnNext();
+}
+
+// ---------- 5. 7-bag randomizer ----------
+function drawFromBag() {
+  if (state.bag.length === 0) {
+    // Refill and shuffle.
+    state.bag = PIECE_TYPES.slice();
+    for (let i = state.bag.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [state.bag[i], state.bag[j]] = [state.bag[j], state.bag[i]];
+    }
+  }
+  return state.bag.shift();
+}
+
+// ---------- 6. Spawn / collision / placement ----------
+function makePiece(type) {
+  const def = PIECES[type];
+  return {
+    type,
+    size: def.size,
+    color: def.color,
+    blocks: def.blocks.map(b => b.slice()), // clone
+    x: spawnX(type),
+    y: 0,
+  };
+}
+
+// Spawn the next piece as current; pull a new piece from bag for next.
+// Returns false if the spawn position collides — game over.
+function spawnNext() {
+  state.current = state.next;
+  state.next = makePiece(drawFromBag());
+  state.dropTimer = 0;
+  state.lockTimer = 0;
+  state.isOnGround = false;
+  if (collides(state.current.blocks, state.current.x, state.current.y)) {
+    return false;
+  }
+  return true;
+}
+
+// Does placing `blocks` (in piece-local coords) at board position (px, py)
+// overlap a wall or a settled block?
+function collides(blocks, px, py) {
+  for (const [bx, by] of blocks) {
+    const cx = px + bx;
+    const cy = py + by;
+    if (cx < 0 || cx >= COLS) return true;
+    if (cy >= ROWS) return true;
+    if (cy >= 0 && state.board[cy][cx] !== null) return true;
+    // cy < 0 is allowed (piece partially above the board, e.g. at spawn)
+  }
+  return false;
+}
+
+// Stamp the current piece into the board.
+function lockPiece() {
+  for (const [bx, by] of state.current.blocks) {
+    const cx = state.current.x + bx;
+    const cy = state.current.y + by;
+    if (cy >= 0 && cy < ROWS && cx >= 0 && cx < COLS) {
+      state.board[cy][cx] = state.current.color;
+    }
+  }
+}
+
+// ---------- 7. Movement, rotation, hard drop ----------
+function tryMove(dx, dy) {
+  const p = state.current;
+  if (!collides(p.blocks, p.x + dx, p.y + dy)) {
+    p.x += dx;
+    p.y += dy;
+    return true;
+  }
+  return false;
+}
+
+// Rotate CW. If the rotated piece collides, try kicking left by 1, right by 1.
+// (I-piece gets the same simple kicks — modern SRS uses different tables but
+// for the macro this plays correctly.)
+function tryRotate() {
+  const p = state.current;
+  if (p.type === "O") return;       // O doesn't rotate
+  const rotated = rotate90cw(p.blocks, p.size);
+  const kicks = [0, -1, 1, -2, 2];  // last two help the I-piece against walls
+  for (const dx of kicks) {
+    if (!collides(rotated, p.x + dx, p.y)) {
+      p.blocks = rotated;
+      p.x += dx;
+      // Successful rotation resets lock timer (allows last-second adjustments).
+      state.lockTimer = 0;
+      return;
+    }
+  }
+  // All kicks failed — silently cancel.
+}
+
+// Drop piece as far as it goes, then lock immediately. No lock delay.
+function hardDrop() {
+  let dropped = 0;
+  while (tryMove(0, 1)) dropped++;
+  finishLock();
+}
+
+// Compute where the current piece would land if it dropped now (ghost piece).
+function ghostY() {
+  const p = state.current;
+  let y = p.y;
+  while (!collides(p.blocks, p.x, y + 1)) y++;
+  return y;
+}
+
+// ---------- 8. Lock, line clear, scoring, level ----------
+function finishLock() {
+  lockPiece();
+  const cleared = clearLines();
+  if (cleared > 0) {
+    state.lines += cleared;
+    state.score += LINE_SCORES[cleared] * state.level;
+    state.level = 1 + Math.floor(state.lines / 10);
+  }
+  if (state.score > state.best) {
+    state.best = state.score;
+    localStorage.setItem("tetris_best", String(state.best));
+  }
+  if (!spawnNext()) {
+    state.phase = "gameover";
+  }
+}
+
+function clearLines() {
+  let cleared = 0;
+  for (let r = ROWS - 1; r >= 0; r--) {
+    if (state.board[r].every(c => c !== null)) {
+      state.board.splice(r, 1);
+      state.board.unshift(new Array(COLS).fill(null));
+      cleared++;
+      r++; // re-check this row (which now has the row above shifted in)
+    }
+  }
+  return cleared;
+}
+
+// ---------- 9. Input ----------
+const keys = new Set();
+const justPressed = new Set();
+const GAME_KEYS = new Set([
+  "ArrowLeft","ArrowRight","ArrowUp","ArrowDown",
+  " ","p","P","Enter",
+]);
+
+window.addEventListener("keydown", (e) => {
+  if (!keys.has(e.key)) justPressed.add(e.key);
+  keys.add(e.key);
+  if (GAME_KEYS.has(e.key)) e.preventDefault();
+});
+window.addEventListener("keyup", (e) => keys.delete(e.key));
+
+// Edge-triggered helpers — call inside update(), then clear at end of frame.
+function consumeJustPressed(key) {
+  if (justPressed.has(key)) { justPressed.delete(key); return true; }
+  return false;
+}
+
+// Hold-with-DAS helper: returns true when caller should perform the move.
+function pollHold(key, hold, dt) {
+  if (!keys.has(key)) { hold.t = 0; hold.charged = false; return false; }
+  if (justPressed.has(key)) {
+    // Initial press handled by consumeJustPressed elsewhere; this path
+    // only handles sustained holds.
+    hold.t = 0;
+    hold.charged = false;
+    return false;
+  }
+  hold.t += dt;
+  if (!hold.charged) {
+    if (hold.t >= MOVE_INITIAL_DELAY) {
+      hold.charged = true;
+      hold.t = 0;
+      return true;
+    }
+  } else {
+    if (hold.t >= MOVE_REPEAT) {
+      hold.t = 0;
+      return true;
+    }
+  }
+  return false;
+}
+
+// ---------- 10. update() ----------
+function update(dt) {
+  if (state.phase === "title") {
+    if (consumeJustPressed("Enter")) {
+      resetGame();
+      state.phase = "playing";
+    }
+    justPressed.clear();
+    return;
+  }
+
+  if (state.phase === "gameover") {
+    if (consumeJustPressed("Enter")) {
+      resetGame();
+      state.phase = "playing";
+    }
+    justPressed.clear();
+    return;
+  }
+
+  if (state.phase === "paused") {
+    if (consumeJustPressed("p") || consumeJustPressed("P")) {
+      state.phase = "playing";
+    }
+    justPressed.clear();
+    return;
+  }
+
+  // phase === "playing"
+  if (consumeJustPressed("p") || consumeJustPressed("P")) {
+    state.phase = "paused";
+    justPressed.clear();
+    return;
+  }
+
+  // Edge-triggered: initial press moves once.
+  if (consumeJustPressed("ArrowLeft"))  { tryMove(-1, 0); state.leftHold = { t: 0, charged: false }; }
+  if (consumeJustPressed("ArrowRight")) { tryMove( 1, 0); state.rightHold = { t: 0, charged: false }; }
+  if (consumeJustPressed("ArrowUp"))    { tryRotate(); }
+  if (consumeJustPressed(" "))          { hardDrop(); justPressed.clear(); return; }
+
+  // Held: auto-repeat after delay.
+  if (pollHold("ArrowLeft",  state.leftHold,  dt)) tryMove(-1, 0);
+  if (pollHold("ArrowRight", state.rightHold, dt)) tryMove( 1, 0);
+
+  state.softDrop = keys.has("ArrowDown");
+
+  // Gravity.
+  const interval = gravityFor(state.level) / (state.softDrop ? SOFT_DROP_FACTOR : 1);
+  state.dropTimer += dt;
+  while (state.dropTimer >= interval) {
+    state.dropTimer -= interval;
+    if (!tryMove(0, 1)) {
+      // Can't drop — start/continue lock-delay countdown.
+      state.isOnGround = true;
+      break;
+    } else {
+      state.isOnGround = false;
+      state.lockTimer = 0;
+    }
+  }
+
+  // Lock delay.
+  if (state.isOnGround) {
+    state.lockTimer += dt;
+    if (state.lockTimer >= LOCK_DELAY) {
+      finishLock();
+    }
+    // If a move/rotate freed the piece from the ground, lockTimer resets via
+    // tryMove success above (next iteration). If still grounded but the
+    // player moved sideways, lockTimer keeps counting up — players can't
+    // infinite-spin (matches simple-rotation philosophy).
+  }
+
+  justPressed.clear();
+}
+
+// ---------- 11. render() ----------
+function drawCell(px, py, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(px + 1, py + 1, CELL - 2, CELL - 2);
+}
+
+function drawBoardFrame() {
+  // Background well.
+  ctx.fillStyle = "#0a0a0a";
+  ctx.fillRect(BOARD_X, BOARD_Y, BOARD_W, BOARD_H);
+  // Subtle grid.
+  ctx.strokeStyle = "#1f1f23";
+  ctx.lineWidth = 1;
+  for (let c = 1; c < COLS; c++) {
+    ctx.beginPath();
+    ctx.moveTo(BOARD_X + c * CELL + 0.5, BOARD_Y);
+    ctx.lineTo(BOARD_X + c * CELL + 0.5, BOARD_Y + BOARD_H);
+    ctx.stroke();
+  }
+  for (let r = 1; r < ROWS; r++) {
+    ctx.beginPath();
+    ctx.moveTo(BOARD_X,           BOARD_Y + r * CELL + 0.5);
+    ctx.lineTo(BOARD_X + BOARD_W, BOARD_Y + r * CELL + 0.5);
+    ctx.stroke();
+  }
+  // Frame.
+  ctx.strokeStyle = "#3f3f46";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(BOARD_X - 1, BOARD_Y - 1, BOARD_W + 2, BOARD_H + 2);
+}
+
+function drawSettled() {
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const v = state.board[r][c];
+      if (v) drawCell(BOARD_X + c * CELL, BOARD_Y + r * CELL, v);
+    }
+  }
+}
+
+function drawPiece(piece, originX, originY, ghost) {
+  for (const [bx, by] of piece.blocks) {
+    const cx = originX + bx * CELL;
+    const cy = originY + by * CELL;
+    if (ghost) {
+      ctx.strokeStyle = piece.color;
+      ctx.globalAlpha = 0.35;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(cx + 2, cy + 2, CELL - 4, CELL - 4);
+      ctx.globalAlpha = 1;
+    } else {
+      drawCell(cx, cy, piece.color);
+    }
+  }
+}
+
+function drawCurrent() {
+  if (!state.current) return;
+  // Ghost first, then real piece on top.
+  const gy = ghostY();
+  drawPiece(
+    { blocks: state.current.blocks, color: state.current.color },
+    BOARD_X + state.current.x * CELL,
+    BOARD_Y + gy * CELL,
+    true
+  );
+  drawPiece(
+    state.current,
+    BOARD_X + state.current.x * CELL,
+    BOARD_Y + state.current.y * CELL,
+    false
+  );
+}
+
+function drawNext() {
+  const px = PANEL_X;
+  const py = BOARD_Y;
+  ctx.fillStyle = "#a1a1aa";
+  ctx.font = "14px system-ui, sans-serif";
+  ctx.fillText("NEXT", px, py + 14);
+
+  // Preview box: 4x4 cells at 22px each, plus padding.
+  const preCell = 22;
+  const boxX = px;
+  const boxY = py + 24;
+  const boxSize = 4 * preCell;
+  ctx.fillStyle = "#0a0a0a";
+  ctx.fillRect(boxX, boxY, boxSize, boxSize);
+  ctx.strokeStyle = "#27272a";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(boxX + 0.5, boxY + 0.5, boxSize - 1, boxSize - 1);
+
+  if (state.next) {
+    // Center the piece's bounding box within the 4x4 preview.
+    const offsetCells = (4 - state.next.size) / 2;
+    for (const [bx, by] of state.next.blocks) {
+      const cx = boxX + (bx + offsetCells) * preCell;
+      const cy = boxY + (by + offsetCells) * preCell;
+      ctx.fillStyle = state.next.color;
+      ctx.fillRect(cx + 1, cy + 1, preCell - 2, preCell - 2);
+    }
+  }
+}
+
+function drawHUD() {
+  const px = PANEL_X;
+  let py = BOARD_Y + 24 + 4 * 22 + 24; // below next preview
+
+  ctx.fillStyle = "#a1a1aa";
+  ctx.font = "14px system-ui, sans-serif";
+
+  const rows = [
+    ["SCORE", state.score],
+    ["LEVEL", state.level],
+    ["LINES", state.lines],
+    ["BEST",  state.best],
+  ];
+  for (const [label, val] of rows) {
+    ctx.fillStyle = "#71717a";
+    ctx.fillText(label, px, py);
+    ctx.fillStyle = "#e4e4e7";
+    ctx.font = "bold 18px system-ui, sans-serif";
+    ctx.fillText(String(val), px, py + 20);
+    ctx.font = "14px system-ui, sans-serif";
+    py += 44;
+  }
+
+  // Controls.
+  py += 12;
+  ctx.fillStyle = "#52525b";
+  ctx.font = "11px system-ui, sans-serif";
+  const controls = [
+    "← →   MOVE",
+    "↑       ROTATE",
+    "↓       SOFT DROP",
+    "SPACE   HARD DROP",
+    "P       PAUSE",
+  ];
+  for (const line of controls) {
+    ctx.fillText(line, px, py);
+    py += 14;
+  }
+}
+
+function drawOverlay(title, subtitle) {
+  ctx.fillStyle = "rgba(9, 9, 11, 0.78)";
+  ctx.fillRect(BOARD_X, BOARD_Y, BOARD_W, BOARD_H);
+  ctx.fillStyle = "#e4e4e7";
+  ctx.font = "bold 40px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(title, BOARD_X + BOARD_W / 2, BOARD_Y + BOARD_H / 2 - 12);
+  ctx.fillStyle = "#a1a1aa";
+  ctx.font = "16px system-ui, sans-serif";
+  ctx.fillText(subtitle, BOARD_X + BOARD_W / 2, BOARD_Y + BOARD_H / 2 + 24);
+  ctx.textAlign = "left";
+}
+
+function render() {
+  // Clear.
+  ctx.fillStyle = "#09090b";
+  ctx.fillRect(0, 0, W, H);
+
+  drawBoardFrame();
+  drawSettled();
+  if (state.phase === "playing" || state.phase === "paused") {
+    drawCurrent();
+  }
+  drawNext();
+  drawHUD();
+
+  if (state.phase === "title") {
+    drawOverlay("TETRIS", "PRESS ENTER TO START");
+  } else if (state.phase === "paused") {
+    drawOverlay("PAUSED", "PRESS P TO RESUME");
+  } else if (state.phase === "gameover") {
+    drawOverlay("GAME OVER", "PRESS ENTER TO RESTART");
+  }
+}
+
+// ---------- 12. Game loop ----------
+let lastTime = performance.now();
+function tick(now) {
+  const dt = Math.min((now - lastTime) / 1000, 1 / 30);
+  lastTime = now;
+  update(dt);
+  render();
+  requestAnimationFrame(tick);
+}
+
+// Initialize state for title screen — board empty, no piece yet.
+state.board = emptyBoard();
+state.next = makePiece(drawFromBag());
+requestAnimationFrame(tick);

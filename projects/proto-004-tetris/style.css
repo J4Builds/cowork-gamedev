@@ -1,0 +1,16 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #18181b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: system-ui, sans-serif;
+  color: #e4e4e7;
+}
+
+#game {
+  background: #09090b;
+  box-shadow: 0 0 0 1px #27272a;
+}
