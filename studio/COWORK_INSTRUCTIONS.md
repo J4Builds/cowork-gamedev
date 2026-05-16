@@ -148,7 +148,17 @@ I can write files into the `Game Dev` folder, but the Cowork mount blocks the un
 2. I run `python3 studio/cowork-push.py "<commit message>"`.
 3. The script wipes the mirror's working tree (preserving `.git`), rsyncs the source in (excluding `.git`, the token, `node_modules/`, etc.), then `git add -A && git commit && git push`.
 
-**Mount-sync gotcha:** the Cowork mount sometimes shows Linux a stale or truncated view of files I just edited via host-side tools. When that happens, the rsync picks up the bad version and the commit corrupts the file on GitHub. Mitigation: when editing larger files (anything over a few hundred lines), rewrite via bash heredoc directly to both `/tmp/cowork-mirror/<path>` and the working tree path, rather than trusting the file tools to round-trip cleanly. Verify with `wc -c` before pushing.
+**Mount-sync gotcha** (diagnosed 2026-05-16): the Cowork mount can show bash a stale, silently-truncated view of files written via host-side Write/Edit. Reproduced reliably with three sequential Edits on a 500-line file — host view stayed correct at 500 lines, bash view dropped to 496 with no error and did not heal on retry. Because `cowork-push.py` rsyncs *through bash*, the truncated version is what would have been committed. The 50% shrink guard does not catch this — the realistic damage is a few lines (sub-1% shrink).
+
+**Rule.** Writes to tracked **source files** (anything under `projects/` or `studio/templates/` — game code, scripts, configs) go through bash, not the host file tools:
+
+- Full-file write: bash heredoc.
+- Surgical patch: python-in-bash with assertion-checked `.replace()` (assert the new substring is present after, so a failed replace fails loud).
+- Single-line tweak: `sed -i`.
+
+After any non-trivial write, verify with bash-side `wc -l` and (for `.js`) `node --check`.
+
+Host-side Write/Edit remain fine for markdown docs (HANDOFF, README, DESIGN, CUT, MEMORY files) — they're small enough that the bug doesn't show up in practice, and the push-time shrink guard catches catastrophic damage. The asymmetry is deliberate: code files are larger and the bug bites hardest there.
 
 **Verification:** I check `https://github.com/J4Builds/cowork-gamedev/commits/main` after each push. If the diff is wildly larger than expected (lots of files in a "small" commit), the mount-sync bug probably hit; revert and rebuild that commit.
 

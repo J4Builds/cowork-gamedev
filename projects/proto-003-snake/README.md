@@ -35,4 +35,13 @@ Open `index.html` in any modern browser. Or play live at:
 
 ### Audio design lessons from this session
 
-1. **Sparse-chain audio.** Initial juice pass had pentatonic chain-ascending pitch on rapid eats (per the Breakout playbook). John pushed back: in Snake, eats are too sparse for the chain to dominate, so the *reset* to baseline registers as a descent and feels jarring. The ascending-au
+1. **Sparse-chain audio.** Initial juice pass had pentatonic chain-ascending pitch on rapid eats (per the Breakout playbook). John pushed back: in Snake, eats are too sparse for the chain to dominate, so the *reset* to baseline registers as a descent and feels jarring. The ascending-audio principle holds for dense chains (Breakout tunneling) but fails for sparse-event games. Replaced with a flat per-event sound. Memory updated with the new sub-rule.
+2. **Synthesis vs Foley.** Three rounds of Web Audio iteration on a "munch" sound (pip → thump+noise → two-bite nom-nom → four-puff mid-band) never landed it. Real Minecraft-style mouth sounds are recorded Foley; synthesis cannot fake the wet/organic character. Lesson: classify the sound target up front. Tonal / percussive → synth. Organic mouth/foot/cloth/water → sample. Saved as a feedback memory.
+
+## Known issues
+
+None reported.
+
+## Next session
+
+Snake is shipped. Next prototype is John's call. Per the learning ladder: proto-004 candidate is Tetris (builds on the tick-based foundation, adds rotation/wall-kicks, line-clear cascades, lock delay). Alternatively a small platformer to introduce continuous-physics + tile-collision + jump-feel — the most-underestimated genre on the ladder.

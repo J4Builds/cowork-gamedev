@@ -32,8 +32,8 @@ Read this first at the start of every session. Quick context bridge — pointers
 
 ## Pending tooling work
 
-- `studio/cowork-push.py` aborts if any tracked file shrinks >50% since the last commit (defends against the Cowork mount sync bug). If a legitimate large deletion is needed, run with `--allow-shrink`.
-- Mount sync gotcha confirmed (again) this session on the juice-pass rewrite. Reliable mitigations: (a) bash heredoc for full-file writes over a few hundred lines, (b) python-in-bash with assertion-checked `replace()` for surgical patches, (c) `sed -i` for single-line tweaks. The file tools (Write/Edit) can silently land on a stale view of the mount for files past ~350 lines. Always verify with `wc -l` and `node --check` after a write.
+- **Rule (verified 2026-05-16): writes to tracked source files go through bash, not host file tools.** Heredoc for full writes, python-in-bash with assertion-checked `.replace()` for surgical patches, `sed -i` for single-line tweaks. Host-side Write/Edit are fine for markdown docs and memory files. After any non-trivial write, verify with `wc -l` and (for `.js`) `node --check`. Full diagnosis in `studio/COWORK_INSTRUCTIONS.md` — the bug reproduced reliably at 500 lines and produced a sub-1% truncation that the push-time guard would not have caught.
+- `studio/cowork-push.py` aborts on >50% file shrink. Useful for catastrophic truncation; too coarse for the realistic mount-bug damage. Run with `--allow-shrink` for legitimate large deletions.
 
 ## Notion (workspace)
 
@@ -50,4 +50,12 @@ Claude maintains these. John doesn't update Notion manually.
 
 ## Reading order at session start
 
-1. **This file (HANDOFF.md)** — fastest co
+1. **This file (HANDOFF.md)** — fastest context restore.
+2. **studio/COWORK_INSTRUCTIONS.md** — how we work.
+3. **Active project's DESIGN.md and README.md** — deeper state for whatever we work on this session.
+
+## Retiring rules
+
+When a game ships or is abandoned: move it from "Active projects" to "Recently retired" with a one-line summary (date + outcome). Once "Recently retired" grows past ~5 entries, the oldest drop off. Those games still exist in `projects/` and Notion's Projects database; they don't need to clutter this short-context file.
+
+For "Pending tooling work": items get removed once resolved. If something lingers more than a session or two, it belongs in a real backlog (Notion Ideas database or GitHub Issues), not here.
