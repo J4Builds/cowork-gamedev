@@ -50,13 +50,13 @@ function gravityFor(level) {
 // within that box, in its spawn orientation. Rotation is computed via
 // rotate90cw() applied to the offsets.
 const PIECES = {
-  I: { size: 4, color: "#22d3ee", blocks: [[0,1],[1,1],[2,1],[3,1]] },
-  O: { size: 2, color: "#facc15", blocks: [[0,0],[1,0],[0,1],[1,1]] },
-  T: { size: 3, color: "#a855f7", blocks: [[1,0],[0,1],[1,1],[2,1]] },
-  S: { size: 3, color: "#22c55e", blocks: [[1,0],[2,0],[0,1],[1,1]] },
-  Z: { size: 3, color: "#ef4444", blocks: [[0,0],[1,0],[1,1],[2,1]] },
-  L: { size: 3, color: "#f97316", blocks: [[2,0],[0,1],[1,1],[2,1]] },
-  J: { size: 3, color: "#3b82f6", blocks: [[0,0],[0,1],[1,1],[2,1]] },
+  I: { size: 4, color: "#0e7490", blocks: [[0,1],[1,1],[2,1],[3,1]] },
+  O: { size: 2, color: "#ca8a04", blocks: [[0,0],[1,0],[0,1],[1,1]] },
+  T: { size: 3, color: "#6d28d9", blocks: [[1,0],[0,1],[1,1],[2,1]] },
+  S: { size: 3, color: "#15803d", blocks: [[1,0],[2,0],[0,1],[1,1]] },
+  Z: { size: 3, color: "#b91c1c", blocks: [[0,0],[1,0],[1,1],[2,1]] },
+  L: { size: 3, color: "#c2410c", blocks: [[2,0],[0,1],[1,1],[2,1]] },
+  J: { size: 3, color: "#1d4ed8", blocks: [[0,0],[0,1],[1,1],[2,1]] },
 };
 const PIECE_TYPES = ["I","O","T","S","Z","L","J"];
 
@@ -78,6 +78,10 @@ function rotate90cw(blocks, size) {
 // Lazy-init on first user interaction (browser autoplay policy).
 let audioCtx = null;
 let masterGain = null;
+let musicGain = null;
+// Music scheduler state (see section 3b).
+let lastStepTime = 0;
+let lastScheduledStep = -1;
 function initAudio() {
   if (audioCtx) return;
   const AC = window.AudioContext || window.webkitAudioContext;
@@ -86,6 +90,15 @@ function initAudio() {
   masterGain = audioCtx.createGain();
   masterGain.gain.value = 0.8;
   masterGain.connect(audioCtx.destination);
+  // Separate bus for background music — quieter than sfx so it doesn't
+  // overpower lock/clear events.
+  musicGain = audioCtx.createGain();
+  musicGain.gain.value = 0.45;
+  musicGain.connect(masterGain);
+  // Kick off the music scheduler. It runs continuously but only emits
+  // notes during "playing" and "paused" phases.
+  lastStepTime = audioCtx.currentTime;
+  musicLoop();
 }
 
 // Small helper: create a tone (osc + gain) with ADSR-ish envelope.
@@ -158,6 +171,94 @@ function playGameOver() {
   notes.forEach((f, i) => {
     tone({ type: "sine", freq: f, start: t0 + i * 0.18, attack: 0.02, dur: 0.42, peak: 0.22 });
   });
+}
+
+// ---------- 3b. Background music ----------
+// Persistent ambient loop, A-minor pentatonic, three intensity tiers
+// driven by stack height. The scheduler uses Web Audio's "lookahead"
+// pattern — runs every 25ms, schedules any notes that fall in the next
+// 100ms. Tempo and voicing scale with intensity; phase gates emission
+// so it only plays during "playing"/"paused".
+
+const BASS_LINE = [110, 110, 98, 110];      // A2, A2, G2, A2 per bar
+const LEAD_PATTERN = [220, 261.63, 329.63, 392, 329.63, 261.63];  // pentatonic walk
+const STEPS_PER_BAR = 16;
+
+function intensityFromBoard() {
+  // Stack height = ROWS - (topmost occupied row index).
+  for (let r = 0; r < ROWS; r++) {
+    if (state.board[r].some((c) => c !== null)) {
+      const height = ROWS - r;
+      if (height >= 13) return 3;
+      if (height >= 6)  return 2;
+      return 1;
+    }
+  }
+  return 1;
+}
+
+function bpmFor(intensity) {
+  return [0, 100, 130, 165][intensity];
+}
+
+// Internal helper: schedule a single note onto musicGain.
+function musicNote(freq, time, type, dur, peak) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  g.gain.setValueAtTime(0, time);
+  g.gain.linearRampToValueAtTime(peak, time + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.001, time + dur);
+  osc.connect(g).connect(musicGain);
+  osc.start(time);
+  osc.stop(time + dur + 0.05);
+}
+
+// Decide what plays on a given 16th-note step.
+function scheduleStep(step, time) {
+  const intensity = intensityFromBoard();
+  const stepInBar = step % STEPS_PER_BAR;
+  const bar = Math.floor(step / STEPS_PER_BAR) % BASS_LINE.length;
+
+  // Bass: one note per bar on beat 1. Sawtooth for body.
+  if (stepInBar === 0) {
+    musicNote(BASS_LINE[bar], time, "sawtooth", 0.65, 0.20);
+  }
+
+  // Tier 2+: quarter-note lead (steps 0/4/8/12). Triangle for warmth.
+  if (intensity >= 2 && stepInBar % 4 === 0) {
+    const idx = Math.floor(step / 4) % LEAD_PATTERN.length;
+    musicNote(LEAD_PATTERN[idx], time, "triangle", 0.28, 0.13);
+  }
+
+  // Tier 3: eighth-note fills on off-beats (steps 2/6/10/14).
+  if (intensity >= 3 && stepInBar % 4 === 2) {
+    const idx = (Math.floor(step / 2) + 1) % LEAD_PATTERN.length;
+    musicNote(LEAD_PATTERN[idx], time, "triangle", 0.14, 0.09);
+  }
+}
+
+// The scheduler loop. Runs forever once initAudio() kicks it off.
+function musicLoop() {
+  if (!audioCtx) return;
+  if (state && (state.phase === "playing" || state.phase === "paused")) {
+    const intensity = intensityFromBoard();
+    const stepDur = 60 / bpmFor(intensity) / 4;   // 16th-note duration
+    const now = audioCtx.currentTime;
+    const ahead = 0.1;
+    while (lastStepTime + stepDur < now + ahead) {
+      lastStepTime += stepDur;
+      lastScheduledStep++;
+      scheduleStep(lastScheduledStep, lastStepTime);
+    }
+  } else {
+    // Title/gameover: keep step clock aligned with current time so we
+    // don't blast through a backlog when the game starts.
+    lastStepTime = audioCtx.currentTime;
+  }
+  setTimeout(musicLoop, 25);
 }
 
 // ---------- 4. Game state ----------
