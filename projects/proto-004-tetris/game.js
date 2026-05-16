@@ -79,9 +79,6 @@ function rotate90cw(blocks, size) {
 let audioCtx = null;
 let masterGain = null;
 let musicGain = null;
-// Music scheduler state (see section 3b).
-let lastStepTime = 0;
-let lastScheduledStep = -1;
 function initAudio() {
   if (audioCtx) return;
   const AC = window.AudioContext || window.webkitAudioContext;
@@ -90,14 +87,11 @@ function initAudio() {
   masterGain = audioCtx.createGain();
   masterGain.gain.value = 0.8;
   masterGain.connect(audioCtx.destination);
-  // Separate bus for background music — quieter than sfx so it doesn't
-  // overpower lock/clear events.
+  // Separate bus for the ambient pad. Starts at 0, faded in by musicLoop.
   musicGain = audioCtx.createGain();
-  musicGain.gain.value = 0.45;
+  musicGain.gain.value = 0;
   musicGain.connect(masterGain);
-  // Kick off the music scheduler. It runs continuously but only emits
-  // notes during "playing" and "paused" phases.
-  lastStepTime = audioCtx.currentTime;
+  startPad();
   musicLoop();
 }
 
@@ -173,19 +167,39 @@ function playGameOver() {
   });
 }
 
-// ---------- 3b. Background music ----------
-// Persistent ambient loop, A-minor pentatonic, three intensity tiers
-// driven by stack height. The scheduler uses Web Audio's "lookahead"
-// pattern — runs every 25ms, schedules any notes that fall in the next
-// 100ms. Tempo and voicing scale with intensity; phase gates emission
-// so it only plays during "playing"/"paused".
+// ---------- 3b. Background music (ambient sine pad) ----------
+// Persistent four-voice sine pad — no rhythm, no melody. Voices fade
+// between chords on stack-height changes. musicGain fades to silence
+// during pause/title/gameover so it never competes with SFX or feels
+// busy. All voices are pure sines (no harmonics = no harshness).
 
-const BASS_LINE = [110, 110, 98, 110];      // A2, A2, G2, A2 per bar
-const LEAD_PATTERN = [220, 261.63, 329.63, 392, 329.63, 261.63];  // pentatonic walk
-const STEPS_PER_BAR = 16;
+const PAD_VOICES = [];   // populated by startPad(); { osc, gain } per voice
+const PAD_FADE = 1.5;    // seconds for chord transitions
+const MUSIC_FADE = 0.6;  // seconds for play/pause fade-in/out
+const MUSIC_PLAY_GAIN = 0.3;
+
+// Per-tier chord. Voices:
+//   0 — root A3 (always present)
+//   1 — fifth E4 (always present)
+//   2 — octave A4 (fades in at tier 2)
+//   3 — color tone: C5 (minor 3rd) at tier 2, G4 (7th) at tier 3
+// All in A minor, no dissonance — denser, slightly more tense at higher
+// tiers, but never alarming.
+const PAD_FREQS = {
+  1: [220, 329.63, 440, 440],
+  2: [220, 329.63, 440, 523.25],
+  3: [220, 329.63, 440, 392],
+};
+const PAD_GAINS = {
+  1: [0.20, 0.15, 0,    0   ],
+  2: [0.18, 0.14, 0.10, 0.10],
+  3: [0.16, 0.14, 0.12, 0.12],
+};
+
+let prevIntensity   = -1;
+let prevMusicTarget = -1;
 
 function intensityFromBoard() {
-  // Stack height = ROWS - (topmost occupied row index).
   for (let r = 0; r < ROWS; r++) {
     if (state.board[r].some((c) => c !== null)) {
       const height = ROWS - r;
@@ -197,68 +211,58 @@ function intensityFromBoard() {
   return 1;
 }
 
-function bpmFor(intensity) {
-  return [0, 100, 130, 165][intensity];
-}
-
-// Internal helper: schedule a single note onto musicGain.
-function musicNote(freq, time, type, dur, peak) {
-  if (!audioCtx) return;
-  const osc = audioCtx.createOscillator();
-  const g = audioCtx.createGain();
-  osc.type = type;
-  osc.frequency.value = freq;
-  g.gain.setValueAtTime(0, time);
-  g.gain.linearRampToValueAtTime(peak, time + 0.01);
-  g.gain.exponentialRampToValueAtTime(0.001, time + dur);
-  osc.connect(g).connect(musicGain);
-  osc.start(time);
-  osc.stop(time + dur + 0.05);
-}
-
-// Decide what plays on a given 16th-note step.
-function scheduleStep(step, time) {
-  const intensity = intensityFromBoard();
-  const stepInBar = step % STEPS_PER_BAR;
-  const bar = Math.floor(step / STEPS_PER_BAR) % BASS_LINE.length;
-
-  // Bass: one note per bar on beat 1. Sawtooth for body.
-  if (stepInBar === 0) {
-    musicNote(BASS_LINE[bar], time, "sawtooth", 0.65, 0.20);
-  }
-
-  // Tier 2+: quarter-note lead (steps 0/4/8/12). Triangle for warmth.
-  if (intensity >= 2 && stepInBar % 4 === 0) {
-    const idx = Math.floor(step / 4) % LEAD_PATTERN.length;
-    musicNote(LEAD_PATTERN[idx], time, "triangle", 0.28, 0.13);
-  }
-
-  // Tier 3: eighth-note fills on off-beats (steps 2/6/10/14).
-  if (intensity >= 3 && stepInBar % 4 === 2) {
-    const idx = (Math.floor(step / 2) + 1) % LEAD_PATTERN.length;
-    musicNote(LEAD_PATTERN[idx], time, "triangle", 0.14, 0.09);
+function startPad() {
+  if (PAD_VOICES.length > 0 || !audioCtx) return;
+  for (let i = 0; i < 4; i++) {
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = PAD_FREQS[1][i];
+    g.gain.value = 0;
+    osc.connect(g).connect(musicGain);
+    osc.start();
+    PAD_VOICES.push({ osc, gain: g });
   }
 }
 
-// The scheduler loop. Runs forever once initAudio() kicks it off.
+function updatePad(intensity) {
+  if (PAD_VOICES.length === 0 || !audioCtx) return;
+  const freqs = PAD_FREQS[intensity] || PAD_FREQS[1];
+  const gains = PAD_GAINS[intensity] || PAD_GAINS[1];
+  const t = audioCtx.currentTime;
+  for (let i = 0; i < PAD_VOICES.length; i++) {
+    const v = PAD_VOICES[i];
+    v.osc.frequency.cancelScheduledValues(t);
+    v.osc.frequency.setValueAtTime(v.osc.frequency.value, t);
+    v.osc.frequency.linearRampToValueAtTime(freqs[i], t + PAD_FADE);
+    v.gain.gain.cancelScheduledValues(t);
+    v.gain.gain.setValueAtTime(v.gain.gain.value, t);
+    v.gain.gain.linearRampToValueAtTime(gains[i], t + PAD_FADE);
+  }
+}
+
 function musicLoop() {
-  if (!audioCtx) return;
-  if (state && (state.phase === "playing" || state.phase === "paused")) {
+  if (!audioCtx) { setTimeout(musicLoop, 100); return; }
+  const t = audioCtx.currentTime;
+  // Music plays only during "playing" — silent on title, paused, gameover.
+  const target = (state && state.phase === "playing") ? MUSIC_PLAY_GAIN : 0;
+  if (target !== prevMusicTarget && musicGain) {
+    musicGain.gain.cancelScheduledValues(t);
+    musicGain.gain.setValueAtTime(musicGain.gain.value, t);
+    musicGain.gain.linearRampToValueAtTime(target, t + MUSIC_FADE);
+    prevMusicTarget = target;
+  }
+  if (state && state.phase === "playing") {
     const intensity = intensityFromBoard();
-    const stepDur = 60 / bpmFor(intensity) / 4;   // 16th-note duration
-    const now = audioCtx.currentTime;
-    const ahead = 0.1;
-    while (lastStepTime + stepDur < now + ahead) {
-      lastStepTime += stepDur;
-      lastScheduledStep++;
-      scheduleStep(lastScheduledStep, lastStepTime);
+    if (intensity !== prevIntensity) {
+      updatePad(intensity);
+      prevIntensity = intensity;
     }
   } else {
-    // Title/gameover: keep step clock aligned with current time so we
-    // don't blast through a backlog when the game starts.
-    lastStepTime = audioCtx.currentTime;
+    // Reset so the chord re-establishes from tier 1 on next play session.
+    prevIntensity = -1;
   }
-  setTimeout(musicLoop, 25);
+  setTimeout(musicLoop, 250);
 }
 
 // ---------- 4. Game state ----------
