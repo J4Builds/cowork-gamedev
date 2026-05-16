@@ -168,38 +168,21 @@ function playGameOver() {
 }
 
 // ---------- 3b. Background music (light techno) ----------
-// Beat-grid scheduler at fixed 120 BPM, three layers added by stack
-// height. No melody — all rhythm — so it stays in the background.
-// Constant tempo: intensity adds voices, not speed.
-//   Tier 1: kick on every quarter note
-//   Tier 2: + closed hi-hat on off-beats
-//   Tier 3: + syncopated bass
+// Beat-grid scheduler at fixed 120 BPM. Two-layer rhythm — kick on every
+// quarter note + closed hi-hat on every off-beat — consistent throughout
+// the game. No melody, no intensity scaling. Pure groove that sits
+// behind the SFX.
 
-const STEPS_PER_BAR  = 16;     // 16th-note grid
-const TECHNO_BPM     = 120;
-const STEP_DURATION  = 60 / TECHNO_BPM / 4;  // seconds per 16th note
+const STEPS_PER_BAR   = 16;     // 16th-note grid
+const TECHNO_BPM      = 120;
+const STEP_DURATION   = 60 / TECHNO_BPM / 4;  // seconds per 16th note
 const MUSIC_PLAY_GAIN = 0.3;
-const MUSIC_FADE     = 0.4;    // gain fade-in/out on phase change
+const MUSIC_FADE      = 0.4;    // gain fade-in/out on phase change
 
-// Bass note per bar (4-bar progression in A minor).
-const BASS_PROGRESSION = [110, 110, 98, 110];  // A2, A2, G2, A2
-
-let lastStepTime       = 0;
-let lastScheduledStep  = -1;
-let prevMusicTarget    = -1;
-let hatNoiseBuffer     = null;
-
-function intensityFromBoard() {
-  for (let r = 0; r < ROWS; r++) {
-    if (state.board[r].some((c) => c !== null)) {
-      const height = ROWS - r;
-      if (height >= 13) return 3;
-      if (height >= 6)  return 2;
-      return 1;
-    }
-  }
-  return 1;
-}
+let lastStepTime      = 0;
+let lastScheduledStep = -1;
+let prevMusicTarget   = -1;
+let hatNoiseBuffer    = null;
 
 // Cached white-noise buffer for the hi-hat (cheap to reuse, no need to
 // regenerate per hit).
@@ -246,36 +229,12 @@ function playHat(time) {
   src.stop(time + 0.05);
 }
 
-// Bass pulse — short square at low-mid freq.
-function playBass(time, freq) {
-  if (!audioCtx) return;
-  const osc = audioCtx.createOscillator();
-  const g = audioCtx.createGain();
-  osc.type = "square";
-  osc.frequency.value = freq;
-  g.gain.setValueAtTime(0, time);
-  g.gain.linearRampToValueAtTime(0.18, time + 0.005);
-  g.gain.exponentialRampToValueAtTime(0.001, time + 0.10);
-  osc.connect(g).connect(musicGain);
-  osc.start(time);
-  osc.stop(time + 0.12);
-}
-
 function scheduleStep(step, time) {
-  const intensity  = intensityFromBoard();
-  const stepInBar  = step % STEPS_PER_BAR;
-  const bar        = Math.floor(step / STEPS_PER_BAR) % BASS_PROGRESSION.length;
-
-  // Kick: every quarter note (steps 0/4/8/12).
+  const stepInBar = step % STEPS_PER_BAR;
+  // Kick on every quarter note (steps 0/4/8/12).
   if (stepInBar % 4 === 0) playKick(time);
-
-  // Tier 2+: closed hi-hat on off-beats (steps 2/6/10/14).
-  if (intensity >= 2 && stepInBar % 4 === 2) playHat(time);
-
-  // Tier 3: syncopated bass — root on step 0, 6, 10 (three hits per bar).
-  if (intensity >= 3 && (stepInBar === 0 || stepInBar === 6 || stepInBar === 10)) {
-    playBass(time, BASS_PROGRESSION[bar]);
-  }
+  // Closed hi-hat on every off-beat (steps 2/6/10/14).
+  if (stepInBar % 4 === 2) playHat(time);
 }
 
 function musicLoop() {

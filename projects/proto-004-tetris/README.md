@@ -2,7 +2,7 @@
 
 ## Status
 
-playable (macro + juice pass complete)
+shipped
 
 ## How to run
 
@@ -58,7 +58,7 @@ Per playtest feedback, scope stayed tight — the game already felt good mechani
 1. **Resize.** Cell size 30 → 40px. Board now 400×800, canvas 620×840. Fonts and panel scaled proportionally. Reads with more presence on screen instead of feeling cramped.
 2. **Restart from pause.** ENTER while paused now restarts the run (consistent with ENTER on title and gameover). Overlay text updated: "P RESUME · ENTER RESTART".
 3. **Audio.** All Web Audio synthesis — no samples needed (these are tonal/percussive, exactly what synth nails per the synthesis-vs-Foley rule). Lazy-init on first ENTER per browser autoplay policy.
-   - **Lock thump.** Short low sine sweep 120→60 Hz, 120ms. Soft "clack" on settle, fires on every piece lock (including hard drops).
+   - **Lock tap.** Triangle wave 380→180 Hz, 80ms. Wood-block-style percussive click on every piece settle (an earlier 120→60 Hz sine was below the physical range of typical laptop speakers and inaudible).
    - **Line clear, scales with count.** Sparse-event design per the Snake lesson — no chain pitch (would feel descending on the reset, Tetris locks are seconds apart). Each event is self-contained:
      - 1 line: single A5 tone.
      - 2 lines: A5 + E6 (perfect fifth).
@@ -68,13 +68,23 @@ Per playtest feedback, scope stayed tight — the game already felt good mechani
    - **Game over.** Descending three-note minor: A5 → F5 → D5, 180ms apart. Sine.
    - All volumes conservative (peak 0.12–0.18) per the juice restraint principle.
 
-## Next session
+## Background music
 
-Macro + juice both shipped. Tetris is at "playable" — could go straight to retired, or there's a polish-pass opportunity if playtest reveals anything.
+Light techno loop, constant 120 BPM, two layers — kick on every quarter note + closed hi-hat on every off-beat. No melody, no intensity scaling. Plays during "playing" only; fades to silence on pause / title / gameover.
 
-Open follow-ups if we return:
+- **Kick:** square wave 180→55 Hz sweep, 120ms. Square (not sine) keeps it audible on small speakers via the harmonics.
+- **Hi-hat:** high-pass-filtered white noise tick, 35ms (uses a cached noise buffer).
+- Music gain bus sits at 0.3 (well below SFX peaks of 0.22–0.30 effective). Fades over 0.4s on phase transitions.
 
-- **DAS tuning** (150ms initial / 50ms repeat). Competitive players want shorter; might be sluggish for fast play.
-- **Visual juice** — explicitly skipped per playtest feedback. Line-clear animation, lock flash, game-over fill, hard-drop trail could all come if needed.
+Earlier passes tried (and abandoned per playtest): adaptive intensity scaling driven by stack height, ambient sine pads, sawtooth bass + triangle melodic lead. The user landed on "consistent, no melody, light groove."
+
+## Status: shipped
+
+Macro + juice both done. Tetris is retired. Reference for: 7-bag randomizer, bounding-box rotation, lock-delay-with-rotation-reset, sparse-event SFX, and the music-iteration process (melodic → ambient pad → techno → simplified techno) — useful playtest history for future juice passes.
+
+Open follow-ups if we ever return:
+
+- **DAS tuning** (150ms initial / 50ms repeat). Competitive players want shorter.
+- **Visual juice** — explicitly skipped per playtest. Line-clear flash, lock flash, hard-drop trail, game-over board fill.
 - **SRS upgrade** if T-spins matter.
 - **Hold slot** for strategic depth.
