@@ -84,7 +84,7 @@ function initAudio() {
   if (!AC) return;
   audioCtx = new AC();
   masterGain = audioCtx.createGain();
-  masterGain.gain.value = 0.5;
+  masterGain.gain.value = 0.8;
   masterGain.connect(audioCtx.destination);
 }
 
@@ -110,7 +110,7 @@ function tone({ type = "sine", freq, freq2, start, attack = 0.01, dur = 0.2, pea
 function playLock() {
   if (!audioCtx) return;
   const t = audioCtx.currentTime;
-  tone({ type: "sine", freq: 120, freq2: 60, start: t, attack: 0.003, dur: 0.12, peak: 0.18 });
+  tone({ type: "sine", freq: 120, freq2: 60, start: t, attack: 0.003, dur: 0.12, peak: 0.30 });
 }
 
 // Line clear — pitch/voicing scales with clear count. Sparse-event audio
@@ -126,7 +126,7 @@ function playLineClear(count) {
     // Ascending arpeggio: E5 A5 C#6 E6, staggered 60ms apart.
     const notes = [659, 880, 1109, 1319];
     notes.forEach((f, i) => {
-      tone({ type: "triangle", freq: f, start: t0 + i * 0.06, attack: 0.005, dur: 0.32, peak: 0.13 });
+      tone({ type: "triangle", freq: f, start: t0 + i * 0.06, attack: 0.005, dur: 0.32, peak: 0.22 });
     });
   } else {
     const sets = {
@@ -136,7 +136,7 @@ function playLineClear(count) {
     };
     const notes = sets[count] || [880];
     notes.forEach((f) => {
-      tone({ type: "sine", freq: f, start: t0, attack: 0.005, dur: 0.18, peak: 0.12 });
+      tone({ type: "sine", freq: f, start: t0, attack: 0.005, dur: 0.18, peak: 0.22 });
     });
   }
 }
@@ -145,7 +145,7 @@ function playLineClear(count) {
 function playLevelUp() {
   if (!audioCtx) return;
   const t = audioCtx.currentTime;
-  tone({ type: "sine", freq: 440, freq2: 880, start: t, attack: 0.02, dur: 0.25, peak: 0.12 });
+  tone({ type: "sine", freq: 440, freq2: 880, start: t, attack: 0.02, dur: 0.25, peak: 0.22 });
 }
 
 // Game over — descending three-note minor: A5, F5, D5.
@@ -154,7 +154,7 @@ function playGameOver() {
   const t0 = audioCtx.currentTime;
   const notes = [880, 698, 587];
   notes.forEach((f, i) => {
-    tone({ type: "sine", freq: f, start: t0 + i * 0.18, attack: 0.02, dur: 0.42, peak: 0.13 });
+    tone({ type: "sine", freq: f, start: t0 + i * 0.18, attack: 0.02, dur: 0.42, peak: 0.22 });
   });
 }
 
